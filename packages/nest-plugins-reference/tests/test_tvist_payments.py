@@ -17,6 +17,7 @@ import pytest
 from nest_core.types import AgentId, Money, PaymentRef, PaymentStatus
 from nest_plugins_reference.payments.tvist import (
     DEFAULT_FIGHT_THRESHOLD,
+    REGIONS,
     IntentRecord,
     ReleaseCondition,
     TvistPayments,
@@ -92,6 +93,45 @@ class TestRegions:
 
     def test_negotiate_unknown_region_is_skipped(self) -> None:
         assert TvistPayments.negotiate_region(["atlantis", "eu_sepa"], ["eu_sepa"]) == "eu_sepa"
+
+    def test_global_list_is_broad(self) -> None:
+        # Not just the Nordics: a global spread of real instant / A2A rails.
+        assert len(REGIONS) >= 20
+        assert {
+            "br_pix",
+            "eu_sepa",
+            "us_fednow",
+            "in_upi",
+            "au_npp",
+            "za_payshap",
+            "ke_mpesa",
+            "stablecoin_x402",
+            "nordic",
+        } <= set(REGIONS)
+
+    def test_recommend_picks_nash_optimal_compromise(self) -> None:
+        # Client ranks SEPA first, agent ranks UPI first; the naive client-first
+        # rule would pick SEPA, but Pix is the joint (Nash) optimum.
+        client = ["eu_sepa", "br_pix", "in_upi"]
+        agent = ["in_upi", "br_pix", "eu_sepa"]
+        assert TvistPayments.negotiate_region(client, agent) == "eu_sepa"
+        assert TvistPayments.recommend_region(client, agent) == "br_pix"
+
+    def test_recommend_no_overlap_returns_none(self) -> None:
+        assert TvistPayments.recommend_region(["br_pix"], ["us_fednow"]) is None
+
+    def test_recommend_symmetric_tie_is_deterministic(self) -> None:
+        # Mirror-image preferences over two regions: equal Nash product and
+        # maximin, broken to the lexicographically smaller id, both ways.
+        a = TvistPayments.recommend_region(["br_pix", "eu_sepa"], ["eu_sepa", "br_pix"])
+        b = TvistPayments.recommend_region(["eu_sepa", "br_pix"], ["br_pix", "eu_sepa"])
+        assert a == b == "br_pix"
+
+    def test_recommend_prefers_mutual_top_pick(self) -> None:
+        # When both rank the same region first, it is unambiguously optimal.
+        assert (
+            TvistPayments.recommend_region(["in_upi", "br_pix"], ["in_upi", "eu_sepa"]) == "in_upi"
+        )
 
     @pytest.mark.asyncio
     async def test_nordic_settlement_is_reversible(self) -> None:

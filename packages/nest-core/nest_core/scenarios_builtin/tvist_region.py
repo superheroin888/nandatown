@@ -105,10 +105,12 @@ class TvistRegionOrchestrator(StateMachineAgent):
         """
         payments_cls = ctx.plugins.get("payments")
         self._payments = payments_cls() if isinstance(payments_cls, type) else payments_cls
-        self._is_tvist = hasattr(self._payments, "negotiate_region")
+        self._is_tvist = hasattr(self._payments, "recommend_region")
         for flow in self._flows:
+            # The agreed region is the game-theoretic (Nash bargaining) optimum for
+            # both parties, not merely the client's first acceptable pick.
             agreed = (
-                self._payments.negotiate_region(flow.client_opts, flow.agent_opts)
+                self._payments.recommend_region(flow.client_opts, flow.agent_opts)
                 if self._is_tvist
                 else None
             )
@@ -261,6 +263,17 @@ def _build_flows() -> tuple[list[RegionFlow], list[AgentId]]:
     """
     specs = [
         RegionFlow("agreed-pix", "recall", "br_pix", ["br_pix", "eu_sepa"], ["eu_sepa", "br_pix"]),
+        # Client ranks SEPA first, agent ranks UPI first; Pix is the Nash-optimal
+        # compromise (it beats either side's top pick on the joint objective), so
+        # the recommender chooses it over the naive client-first SEPA.
+        RegionFlow(
+            "nash-compromise",
+            "recall",
+            "br_pix",
+            ["eu_sepa", "br_pix", "in_upi"],
+            ["in_upi", "br_pix", "eu_sepa"],
+            260,
+        ),
         RegionFlow("fednow-norecall", "recall", "us_fednow", ["us_fednow"], ["us_fednow"], 220),
         RegionFlow("no-overlap", "recall", "br_pix", ["br_pix"], ["us_fednow"], 240),
         RegionFlow(

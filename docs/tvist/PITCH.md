@@ -47,10 +47,13 @@ partners) with a governing-region base feature and three primitives, all on the
 
 0. **Region chosen & negotiated up front (base feature).** A dispute is
    meaningless without a jurisdiction. Before any funds move, the client and the
-   agent agree which region's regime governs the transaction — Pix's 11-day
-   recovery, SEPA's 10-second recall window, FedNow's *no-recall*, a Nordic
-   reversible chargeback — from a menu of options, not a hard-coded default. The
-   transaction is bound to that regime; escrow, recall, and disputes all obey it.
+   agent agree which region's regime governs the transaction — from a **global
+   list of 22 real instant/A2A rails** (Pix's 11-day recovery, SEPA's 10-second
+   recall window, FedNow's *no-recall*, UPI, NPP, Interac, M-Pesa, stablecoin, a
+   Nordic reversible chargeback …), not a hard-coded default. The pick is the
+   **Nash bargaining optimum** for both parties — the jointly-best jurisdiction,
+   not whatever one side demands. The transaction is then bound to that regime;
+   escrow, recall, and disputes all obey it.
 1. **Programmable escrow.** Hold funds across A2A rails until a typed condition —
    delivery proof, time, or attestation — is satisfied. Release is *refused*
    until then; a contest opens a mediation case.

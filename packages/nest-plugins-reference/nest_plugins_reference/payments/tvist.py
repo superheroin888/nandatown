@@ -91,6 +91,8 @@ REASON_CODES: frozenset[str] = frozenset(
         "recurring_disputed",
         "agent_exceeded_mandate",
         "verifiable_intent_mismatch",
+        "recall_request",
+        "mistaken_payment",
         "sepa_recall",
         "pix_med_return",
     }
@@ -139,116 +141,169 @@ class DisputeRegime:
 # behaves like a plain ledger — regional enforcement is opt-in via negotiation.
 DEFAULT_REGION = "global"
 
-# Built-in regions — not just the Nordics. Each maps a real A2A rail to its
-# operative dispute regime. Clients and agents negotiate which one governs a
-# transaction up front (:meth:`TvistPayments.negotiate_region`).
-REGIONS: dict[str, DisputeRegime] = {
-    "global": DisputeRegime(
-        region="global",
-        label="Ungoverned (permissive default)",
-        rail="generic",
-        irrevocable=True,
-        recall_allowed=True,
-        recall_window_ticks=0,
-        reason_codes=REASON_CODES,
-        requires_delivery_for_escrow=False,
-    ),
-    "eu_sepa": DisputeRegime(
-        region="eu_sepa",
-        label="EU — SEPA Instant (SCT Inst recall)",
-        rail="sepa_instant",
-        irrevocable=True,
-        recall_allowed=True,
-        recall_window_ticks=10,
-        reason_codes=frozenset(
+# Global jurisdiction list. Each row maps a real instant / A2A rail to its
+# operative dispute regime; clients and agents negotiate which one governs a
+# transaction up front (:meth:`TvistPayments.recommend_region`). Reusable reason
+# sets keep the table compact:
+_CORE = frozenset({"fraud", "agent_exceeded_mandate", "recall_request"})
+_CORE_MISTAKEN = _CORE | {"mistaken_payment"}
+# Rails with no recovery standard yet: escrow is the only protection, so the only
+# admissible disputes are agent-mandate ones adjudicated against the intent vault.
+_NO_RECALL = frozenset({"agent_exceeded_mandate", "verifiable_intent_mismatch"})
+
+# Columns: region, label, rail, irrevocable, recall_allowed, recall_window_ticks,
+# reason_codes, requires_delivery_for_escrow.
+_REGION_TABLE: tuple[tuple[str, str, str, bool, bool, int, frozenset[str], bool], ...] = (
+    ("global", "Ungoverned (permissive default)", "generic", True, True, 0, REASON_CODES, False),
+    (
+        "eu_sepa",
+        "EU \u2014 SEPA Instant (SCT Inst recall)",
+        "sepa_instant",
+        True,
+        True,
+        10,
+        frozenset(
             {
                 "sepa_recall",
+                "recall_request",
                 "verifiable_intent_mismatch",
                 "agent_exceeded_mandate",
                 "fraud",
                 "not_as_described",
             }
         ),
-        requires_delivery_for_escrow=True,
+        True,
     ),
-    "br_pix": DisputeRegime(
-        region="br_pix",
-        label="Brazil — Pix (MED 2.0, 11-day recovery)",
-        rail="pix",
-        irrevocable=True,
-        recall_allowed=True,
-        recall_window_ticks=11,
-        reason_codes=frozenset(
+    (
+        "uk_fps",
+        "UK \u2014 Faster Payments (APP reimbursement)",
+        "fps",
+        True,
+        True,
+        5,
+        frozenset(
+            {
+                "fraud",
+                "goods_not_received",
+                "not_as_described",
+                "agent_exceeded_mandate",
+                "recall_request",
+            }
+        ),
+        True,
+    ),
+    (
+        "nordic",
+        "Nordics \u2014 Klarna / BNPL / Swish",
+        "bnpl",
+        False,
+        True,
+        0,
+        frozenset({"goods_not_received", "not_as_described", "fraud", "recurring_disputed"}),
+        False,
+    ),
+    ("ch_twint", "Switzerland \u2014 TWINT", "twint", True, True, 5, _CORE, True),
+    (
+        "br_pix",
+        "Brazil \u2014 Pix (MED 2.0, 11-day recovery)",
+        "pix",
+        True,
+        True,
+        11,
+        frozenset(
             {
                 "pix_med_return",
+                "recall_request",
                 "verifiable_intent_mismatch",
                 "agent_exceeded_mandate",
                 "fraud",
             }
         ),
-        requires_delivery_for_escrow=True,
+        True,
     ),
-    "us_fednow": DisputeRegime(
-        region="us_fednow",
-        label="US — FedNow (no federal recall standard)",
-        rail="fednow",
-        irrevocable=True,
-        recall_allowed=False,
-        recall_window_ticks=0,
-        reason_codes=frozenset({"agent_exceeded_mandate", "verifiable_intent_mismatch"}),
-        requires_delivery_for_escrow=True,
+    ("mx_spei", "Mexico \u2014 SPEI", "spei", True, False, 0, _NO_RECALL, True),
+    (
+        "us_fednow",
+        "US \u2014 FedNow (no federal recall standard)",
+        "fednow",
+        True,
+        False,
+        0,
+        _NO_RECALL,
+        True,
     ),
-    "in_upi": DisputeRegime(
-        region="in_upi",
-        label="India — UPI (NPCI dispute flows)",
-        rail="upi",
-        irrevocable=True,
-        recall_allowed=True,
-        recall_window_ticks=7,
-        reason_codes=frozenset(
+    (
+        "us_rtp",
+        "US \u2014 RTP (TCH, request-for-return)",
+        "rtp",
+        True,
+        False,
+        0,
+        _NO_RECALL | {"mistaken_payment"},
+        True,
+    ),
+    (
+        "ca_interac",
+        "Canada \u2014 Interac / Real-Time Rail",
+        "interac",
+        True,
+        True,
+        3,
+        _CORE_MISTAKEN,
+        True,
+    ),
+    (
+        "in_upi",
+        "India \u2014 UPI (NPCI dispute flows)",
+        "upi",
+        True,
+        True,
+        7,
+        frozenset(
             {
                 "fraud",
                 "goods_not_received",
                 "verifiable_intent_mismatch",
                 "agent_exceeded_mandate",
+                "recall_request",
             }
         ),
-        requires_delivery_for_escrow=True,
+        True,
     ),
-    "uk_fps": DisputeRegime(
-        region="uk_fps",
-        label="UK — Faster Payments (APP reimbursement)",
-        rail="fps",
-        irrevocable=True,
-        recall_allowed=True,
-        recall_window_ticks=5,
-        reason_codes=frozenset(
-            {
-                "fraud",
-                "goods_not_received",
-                "not_as_described",
-                "agent_exceeded_mandate",
-            }
-        ),
-        requires_delivery_for_escrow=True,
+    ("sg_fast", "Singapore \u2014 FAST / PayNow", "fast", True, True, 5, _CORE, True),
+    ("au_npp", "Australia \u2014 NPP / Osko", "npp", True, True, 5, _CORE_MISTAKEN, True),
+    ("jp_zengin", "Japan \u2014 Zengin", "zengin", True, True, 4, _CORE_MISTAKEN, True),
+    ("hk_fps", "Hong Kong \u2014 FPS", "hkfps", True, True, 5, _CORE, True),
+    ("ae_aani", "UAE \u2014 Aani", "aani", True, True, 5, _CORE, True),
+    ("sa_sarie", "Saudi Arabia \u2014 sarie", "sarie", True, True, 5, _CORE, True),
+    ("za_payshap", "South Africa \u2014 PayShap", "payshap", True, False, 0, _NO_RECALL, True),
+    ("ng_nip", "Nigeria \u2014 NIBSS Instant Payments", "nip", True, True, 3, _CORE_MISTAKEN, True),
+    ("ke_mpesa", "Kenya \u2014 M-Pesa / PesaLink", "mpesa", True, True, 2, _CORE_MISTAKEN, True),
+    ("cn_ibps", "China \u2014 IBPS / UnionPay", "ibps", True, False, 0, _NO_RECALL, True),
+    (
+        "stablecoin_x402",
+        "Stablecoin \u2014 Coinbase x402 (no chargeback)",
+        "stablecoin_usdc",
+        True,
+        False,
+        0,
+        _NO_RECALL,
+        True,
     ),
-    "nordic": DisputeRegime(
-        region="nordic",
-        label="Nordics — Klarna / BNPL / Swish",
-        rail="bnpl",
-        irrevocable=False,
-        recall_allowed=True,
-        recall_window_ticks=0,
-        reason_codes=frozenset(
-            {
-                "goods_not_received",
-                "not_as_described",
-                "fraud",
-                "recurring_disputed",
-            }
-        ),
-        requires_delivery_for_escrow=False,
-    ),
+)
+
+REGIONS: dict[str, DisputeRegime] = {
+    row[0]: DisputeRegime(
+        region=row[0],
+        label=row[1],
+        rail=row[2],
+        irrevocable=row[3],
+        recall_allowed=row[4],
+        recall_window_ticks=row[5],
+        reason_codes=row[6],
+        requires_delivery_for_escrow=row[7],
+    )
+    for row in _REGION_TABLE
 }
 
 
@@ -446,6 +501,65 @@ class TvistPayments:
             if region in agent_set and region in REGIONS:
                 return region
         return None
+
+    @staticmethod
+    def _region_utilities(prefs: list[str]) -> dict[str, int]:
+        """Map an ordered preference list to ordinal utilities (first = highest).
+
+        A list of ``n`` regions gives the first ``n`` points and the last ``1``;
+        a region absent from the list is unacceptable (utility 0).
+
+        Example::
+
+            u = TvistPayments._region_utilities(["br_pix", "eu_sepa"])
+            assert u == {"br_pix": 2, "eu_sepa": 1}
+        """
+        n = len(prefs)
+        return {region: n - i for i, region in enumerate(prefs)}
+
+    @classmethod
+    def recommend_region(
+        cls,
+        client_prefs: list[str],
+        agent_prefs: list[str],
+    ) -> str | None:
+        """Recommend the game-theoretically optimal region for **both** parties.
+
+        Unlike :meth:`negotiate_region` (a take-it-or-leave-it rule that favours
+        the client's first pick), this is the **Nash bargaining solution** over the
+        regions both sides accept. Each party's ordered list is read as ordinal
+        utilities (:meth:`_region_utilities`); the disagreement point is "no deal".
+        Among the feasible (mutually-acceptable) regions the recommendation
+        maximises the **Nash product** ``u_client * u_agent`` — the unique solution
+        that is Pareto-efficient and symmetric — with deterministic tie-breaks:
+
+        1. higher Nash product (the bargaining objective),
+        2. then higher ``min(u_client, u_agent)`` (egalitarian / maximin fairness),
+        3. then higher ``u_client + u_agent`` (utilitarian welfare),
+        4. then the lexicographically smallest region id (reproducibility).
+
+        Returns ``None`` when the parties share no acceptable region — there is no
+        bargain, so the transaction must not proceed. This is the selection the
+        region scenario uses, so the agreed region is provably the parties'
+        jointly-optimal jurisdiction, not merely a feasible one.
+
+        Example::
+
+            # Client wants SEPA, agent wants UPI; Pix is the optimal middle ground.
+            r = TvistPayments.recommend_region(
+                ["eu_sepa", "br_pix", "in_upi"], ["in_upi", "br_pix", "eu_sepa"]
+            )
+            assert r == "br_pix"
+        """
+        uc = cls._region_utilities(client_prefs)
+        ua = cls._region_utilities(agent_prefs)
+        feasible = [r for r in uc if r in ua and r in REGIONS]
+        if not feasible:
+            return None
+        return min(
+            feasible,
+            key=lambda r: (-(uc[r] * ua[r]), -min(uc[r], ua[r]), -(uc[r] + ua[r]), r),
+        )
 
     def regime(self, region: str) -> DisputeRegime:
         """Return the :class:`DisputeRegime` for ``region`` (or the permissive default).

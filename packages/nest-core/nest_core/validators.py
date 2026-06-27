@@ -2160,6 +2160,72 @@ def validate_tvist_region_agreed(
     ]
 
 
+def _nash_optimal_region(client_opts: list[str], agent_opts: list[str]) -> str | None:
+    """Recompute the Nash-bargaining optimal region from two ordered option lists.
+
+    Mirrors ``TvistPayments.recommend_region`` independently (ordinal utilities,
+    maximise the Nash product, then maximin, then welfare, then the smallest id),
+    so the validator can judge *any* plugin's region choice against the
+    game-theoretic optimum without trusting the plugin to mark its own homework.
+
+    Example::
+
+        assert _nash_optimal_region(["eu_sepa", "br_pix"], ["br_pix", "eu_sepa"]) == "br_pix"
+    """
+    uc = {r: len(client_opts) - i for i, r in enumerate(client_opts)}
+    ua = {r: len(agent_opts) - i for i, r in enumerate(agent_opts)}
+    feasible = [r for r in uc if r in ua]
+    if not feasible:
+        return None
+    return min(
+        feasible,
+        key=lambda r: (-(uc[r] * ua[r]), -min(uc[r], ua[r]), -(uc[r] + ua[r]), r),
+    )
+
+
+def validate_tvist_region_optimal(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """The agreed region is the game-theoretically optimal one for both parties.
+
+    For every ``tvist:region`` line, recomputes the Nash-bargaining optimum from
+    the two emitted option lists and asserts the ``agreed`` region matches it (and
+    that a no-overlap flow agreed nothing). A plugin that picks a merely-feasible
+    region — or, like ``prepaid_credits``, picks nothing and settles anyway — does
+    not match the optimum and FAILS.
+
+    Example::
+
+        results = validate_tvist_region_optimal(events)
+    """
+    lines = _tvist_lines(events, "region")
+    if not lines:
+        return [ValidationResult("tvist_region_optimal", False, "no region negotiation emitted")]
+    mismatches: list[str] = []
+    checked = 0
+    for parts in lines:
+        # tvist:region:<flow>:<agreed>:<client_opts>:<agent_opts>
+        if len(parts) < 6:
+            continue
+        flow, agreed = parts[2], parts[3]
+        client = parts[4].split("|") if parts[4] else []
+        agent = parts[5].split("|") if parts[5] else []
+        optimal = _nash_optimal_region(client, agent)
+        expected = optimal if optimal is not None else "none"
+        checked += 1
+        if agreed != expected:
+            mismatches.append(f"{flow}: agreed {agreed!r} but Nash-optimal is {expected!r}")
+    if mismatches:
+        return [ValidationResult("tvist_region_optimal", False, "; ".join(mismatches))]
+    return [
+        ValidationResult(
+            "tvist_region_optimal",
+            True,
+            f"{checked} negotiation(s), each settled on the Nash-optimal region",
+        )
+    ]
+
+
 def validate_tvist_region_adherence(
     events: list[dict[str, Any]],
 ) -> list[ValidationResult]:
@@ -2325,6 +2391,7 @@ VALIDATORS: dict[str, list[Any]] = {
     ],
     "tvist_region": [
         validate_tvist_region_agreed,
+        validate_tvist_region_optimal,
         validate_tvist_region_adherence,
         validate_tvist_conservation,
     ],

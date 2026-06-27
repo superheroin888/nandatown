@@ -58,25 +58,40 @@ transaction is bound to that regime for the rest of its life.
 
 **Nanda Town port.**
 
-- **Plugin:** `DisputeRegime` + a `REGIONS` registry (Pix, SEPA, FedNow, UPI, UK
-  FPS, Nordic, plus a permissive `global` default). `negotiate_region(client_opts,
-  agent_opts)` returns the client's highest preference the agent also accepts, or
-  `None` (no deal → don't transact). The agreed region is threaded into
-  `settle_a2a` (its regime decides irrevocability), `recall_a2a` (recall allowed?
-  inside the window?), `open_dispute` (reason code in the region's taxonomy?), and
+- **Global jurisdiction list.** `DisputeRegime` + a `REGIONS` registry of **22
+  real instant / A2A rails across six continents** — SEPA, Pix, FedNow, RTP, UPI,
+  FPS, NPP/Osko, PayNow/FAST, Zengin, Interac, SPEI, PayShap, NIP, M-Pesa, Aani,
+  sarie, IBPS, TWINT, stablecoin/x402, Nordic BNPL … plus a permissive `global`
+  default. Each carries its operative regime (irrevocable? recall allowed? window;
+  reason-code taxonomy; escrow-condition requirement).
+- **Game-theoretic recommendation.** `recommend_region(client_prefs, agent_prefs)`
+  reads each party's ordered list as ordinal utilities and returns the **Nash
+  bargaining solution** over the regions both accept — the region maximising the
+  Nash product `u_client · u_agent` (tie-broken by maximin fairness, then
+  utilitarian welfare, then a stable id), or `None` if there is no overlap. It is
+  Pareto-efficient and symmetric, so neither party is simply imposed on: e.g.
+  client ranks SEPA first, agent ranks UPI first → it recommends **Pix**, the
+  jointly-optimal middle ground, not the client's top pick. (`negotiate_region` is
+  retained as the naive client-first baseline.)
+- **Binding & enforcement.** The agreed region is threaded into `settle_a2a` (its
+  regime decides irrevocability), `recall_a2a` (recall allowed? inside the
+  window?), `open_dispute` (reason code in the region's taxonomy?), and
   `open_escrow` (does the region demand a delivery condition?).
 - **Scenario:** [`scenarios/tvist_region.yaml`](../../scenarios/tvist_region.yaml)
-  — flows that *agree* a region (Pix recall honoured), pick a *no-recall* region
-  (FedNow clawback refused), *fail to overlap* (no transaction), and file an
-  *off-taxonomy* reason (rejected) vs an in-taxonomy one (accepted).
+  — flows that *agree* a region (Pix recall honoured), choose the *Nash compromise*
+  over the client-first pick, hit a *no-recall* region (FedNow clawback refused),
+  *fail to overlap* (no transaction), and file an *off-taxonomy* reason (rejected)
+  vs an in-taxonomy one (accepted).
 - **Adversarial validators:** `tvist_region_agreed` (every settlement was under a
-  mutually-agreed region) and `tvist_region_adherence` (no recall in a no-recall
-  region, no dispute reason outside the agreed taxonomy).
+  mutually-agreed region), `tvist_region_optimal` (the agreed region is the
+  recomputed Nash optimum, not merely a feasible one), and `tvist_region_adherence`
+  (no recall in a no-recall region, no dispute reason outside the agreed taxonomy).
 
-**The discrimination.** Under `payments: tvist` a region is negotiated and every
-flow obeys it → **PASS**. Under `payments: prepaid_credits` there is no
-negotiation and no regime: every flow settles ungoverned, the FedNow clawback
-reverses, and the off-taxonomy reason is accepted → both validators **FAIL**.
+**The discrimination.** Under `payments: tvist` the Nash-optimal region is
+negotiated and every flow obeys it → **PASS**. Under `payments: prepaid_credits`
+there is no negotiation and no regime: every flow settles ungoverned, none match
+the optimum, the FedNow clawback reverses, and the off-taxonomy reason is accepted
+→ all three region validators **FAIL**.
 
 ---
 
@@ -156,7 +171,7 @@ irrevocable rails.
    A single orchestrator owns the plugin and drives the flows (the
    `receipt_reputation` auditor pattern), emitting a `tvist:` trace-line
    protocol.
-3. **Validators** — eight adversarial checks added to
+3. **Validators** — nine adversarial checks added to
    [`validators.py`](../../packages/nest-core/nest_core/validators.py) and
    registered under `tvist_region` / `tvist_escrow` / `tvist_disputes`.
 4. **Tests** — plugin unit + property tests
