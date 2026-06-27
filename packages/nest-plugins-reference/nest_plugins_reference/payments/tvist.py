@@ -1,53 +1,56 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tvist: escrow + intent-vault + irrevocable-recall payments for agentic commerce.
+"""Tvist: dispute + escrow + intent-vault payments for cards, BNPL, and A2A rails.
 
 This payments plugin extends the one-shot ``prepaid_credits`` ledger with the
-Tvist 2.0 settlement-trust layer for **account-to-account (A2A) agentic
-commerce** — the layer the seven agent-payment protocols and the now-mandatory
-irrevocable rails (Pix, SEPA Instant, FedNow) left unbuilt.
+two halves of the Tvist product. The headline is the agentic-commerce extension
+(escrow + A2A); evidence-gated dispute deflection is the foundation it shares a
+core with.
 
-**Irrevocable A2A push payments.** Once :meth:`settle_a2a` lands, the funds are
-settlement-final: :meth:`refund` refuses them. The only sanctioned reversal is a
-:meth:`recall_a2a` that cites a **Verifiable-Intent mismatch** — proof from the
-:class:`IntentRecord` vault that the initiating agent exceeded its mandate. A
-recall with no mismatch (the unilateral clawback a fraudster wants) is refused.
+**Escrow + irrevocable A2A (the agentic-commerce extension).** Push payments
+(Pix, SEPA Instant, FedNow, stablecoin) are settlement-final: once
+:meth:`settle_a2a` lands, the funds cannot be unilaterally clawed back. The only
+sanctioned reversal is a :meth:`recall_a2a` that cites a **Verifiable-Intent
+mismatch** — proof from the :class:`IntentRecord` vault that the initiating agent
+exceeded its mandate. :meth:`open_escrow` / :meth:`release_escrow` hold funds
+until a typed :class:`ReleaseCondition` (delivery / attestation / time) is
+satisfied; an unsatisfied release is refused.
 
-**Programmable escrow.** :meth:`open_escrow` / :meth:`fund_escrow` /
-:meth:`release_escrow` hold funds until a typed :class:`ReleaseCondition`
-(delivery / attestation / time) is satisfied; an unsatisfied or contested
-release is refused, so a payee cannot drain an escrow it never delivered
-against. A contested escrow is mediated to a refund.
-
-**Cross-protocol intent vault.** :meth:`store_intent` / :meth:`intent_covers`
-hold the mandate (budget, merchant allowlist) behind an agent payment and
-adjudicate whether a settlement is authorised. Evidence artifacts (e.g. a
-carrier delivery proof) are content-addressed via :func:`content_hash`, so a
-citation both names and pins the exact bytes.
+**Dispute deflection (the shared foundation).** A reversible card / BNPL payment
+can be *disputed*. The naive issuer behaviour a generic ``Payments`` plugin can
+offer is "any dispute → ``refund``", which hands a full reversal to every
+*friendly-fraud* claimant (the cardholder who actually received the goods). Tvist
+instead gates the reversal on **content-addressed evidence**: representment
+assembles cited evidence hashes into a deterministic win-probability, and a
+refund is only conceded when that probability falls below the auto-fight
+threshold. A dispute the merchant can rebut with a verified ``delivery_signed``
+proof is *represented and won* — the friendly-fraud reversal never executes.
 
 Every operation conserves funds: the sum of all balances plus all escrow-held
 amounts is invariant across the lifetime of the ledger. The plugin is
-**deterministic** — no wall-clock, no RNG; evidence identity is ``sha256``
-content-addressing.
+**deterministic** — win-probabilities are a fixed function of the cited
+evidence, evidence identity is ``sha256`` content-addressing. No wall-clock, no
+RNG.
 
 It satisfies the stock :class:`~nest_core.layers.payments.Payments` protocol, so
-``payments: tvist`` is a drop-in for any scenario; the escrow / A2A / intent
+``payments: tvist`` is a drop-in for any scenario; the dispute / escrow / intent
 surface is additive. Registered under ``("payments", "tvist")`` in
 ``nest_core.plugins``.
 
 Example::
 
-    pay = TvistEscrowPayments(AgentId("agent"), balances={AgentId("agent"): 1000})
-    pay.store_intent(IntentRecord("i1", AgentId("agent"), budget=300))
-    await pay.settle_a2a(AgentId("merchant"), Money(amount=200), PaymentRef("a1"),
-                         rail="pix", intent_ref="i1")
-    # Over-mandate or unilateral clawback are both refused; see recall_a2a / settle_a2a.
+    pay = TvistPayments(AgentId("system"), balances={AgentId("buyer"): 1000})
+    receipt = await pay.pay(AgentId("merchant"), Money(amount=200), PaymentRef("p1"))
+    ev = pay.register_evidence({"kind": "delivery_signed", "carrier": "postnord"})
+    case = pay.open_dispute(PaymentRef("p1"), "goods_not_received", AgentId("buyer"))
+    pay.assemble_evidence(case.case_id, [ev])
+    outcome, merchant_won = pay.resolve_dispute(case.case_id)
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from nest_core.types import (
@@ -60,17 +63,36 @@ from nest_core.types import (
     ServiceRef,
 )
 
-# Reason codes Tvist's canonical taxonomy maps onto for A2A / agentic disputes.
-# These are the v2 additions the product spec §3.3 introduces for irrevocable
-# rails and agent-mediated transactions.
+# Auto-fight threshold from the Tvist product spec (§5.2): a case scoring at or
+# above this is represented (fought); below it the issuer concedes a refund.
+DEFAULT_FIGHT_THRESHOLD = 0.65
+
+# Deterministic win-probability contribution per verified evidence category.
+# Strong delivery proof dominates; agentic intent corroboration and device
+# signals are supporting. The weights are published as part of the method so a
+# score is fully reproducible from the cited evidence alone.
+EVIDENCE_WEIGHTS: dict[str, float] = {
+    "delivery_signed": 0.55,
+    "delivery": 0.40,
+    "intent_match": 0.30,
+    "device_match": 0.15,
+    "customer_history": 0.10,
+    "ip_match": 0.10,
+}
+
+# Reason codes Tvist's canonical taxonomy maps onto. The first group mirrors
+# Klarna RFI / Mastercom message reason codes (v1 card / BNPL); the second is the
+# agentic + A2A additions the product spec §3.3 introduces for irrevocable rails.
 REASON_CODES: frozenset[str] = frozenset(
     {
+        "goods_not_received",
+        "not_as_described",
+        "fraud",
+        "recurring_disputed",
         "agent_exceeded_mandate",
         "verifiable_intent_mismatch",
         "sepa_recall",
         "pix_med_return",
-        "goods_not_received",
-        "not_as_described",
     }
 )
 
@@ -100,7 +122,7 @@ class ReleaseCondition:
     Three primitive types from the Tvist 2.0 spec (§4.1): ``delivery_proof`` (a
     carrier state must be reached), ``time_elapsed`` (auto-release at a tick), and
     ``attestation`` (a named party signals satisfaction). ``satisfied`` is flipped
-    only by :meth:`TvistEscrowPayments.satisfy_condition` against matching proof.
+    only by :meth:`TvistPayments.satisfy_condition` against matching proof.
 
     Example::
 
@@ -137,6 +159,30 @@ class TvistEscrow:
 
 
 @dataclass
+class TvistCase:
+    """A dispute case over a settled (reversible) payment.
+
+    Holds the cited evidence hashes and the resulting deterministic
+    ``win_probability``. ``outcome`` is one of ``open``, ``represented``,
+    ``refunded``, or ``rejected``; ``merchant_won`` records whether the reversal
+    was successfully deflected.
+
+    Example::
+
+        case = TvistCase("c1", PaymentRef("p1"), "fraud", AgentId("buyer"))
+    """
+
+    case_id: str
+    payment_ref: PaymentRef
+    reason_code: str
+    disputant: AgentId
+    evidence_hashes: list[str] = field(default_factory=lambda: list[str]())
+    win_probability: float = 0.0
+    outcome: Literal["open", "represented", "refunded", "rejected"] = "open"
+    merchant_won: bool = False
+
+
+@dataclass
 class IntentRecord:
     """A canonical cross-protocol Verifiable-Intent record (Tvist Intent Vault).
 
@@ -158,18 +204,18 @@ class IntentRecord:
     merchant_allowlist: tuple[AgentId, ...] | None = None
 
 
-class TvistEscrowPayments:
-    """Escrow + intent-vault + irrevocable-recall payments implementing ``Payments``.
+class TvistPayments:
+    """Dispute + escrow + intent-vault payments implementing the ``Payments`` protocol.
 
     Constructed like ``PrepaidCredits`` (``agent_id``, ``initial_balance``, shared
     ``balances`` / ``payments`` dicts) so it is a drop-in ``payments:`` plugin. The
-    escrow, evidence, and intent-vault stores are additionally shareable so a
-    central orchestrator can own one ledger across a whole scenario.
+    dispute, escrow, evidence, and intent-vault stores are additionally shareable
+    so a central orchestrator can own one ledger across a whole scenario.
 
     Example::
 
-        pay = TvistEscrowPayments(AgentId("agent"), balances={AgentId("agent"): 1000})
-        await pay.settle_a2a(AgentId("m"), Money(amount=200), PaymentRef("a1"))
+        pay = TvistPayments(AgentId("system"), balances={AgentId("b"): 1000})
+        await pay.pay(AgentId("m"), Money(amount=200), PaymentRef("p1"))
     """
 
     def __init__(
@@ -179,6 +225,7 @@ class TvistEscrowPayments:
         balances: dict[AgentId, int] | None = None,
         payments: dict[PaymentRef, Receipt] | None = None,
         escrows: dict[str, TvistEscrow] | None = None,
+        cases: dict[str, TvistCase] | None = None,
         evidence: dict[str, dict[str, Any]] | None = None,
         intents: dict[str, IntentRecord] | None = None,
         settled_meta: dict[PaymentRef, dict[str, Any]] | None = None,
@@ -188,6 +235,7 @@ class TvistEscrowPayments:
         self._balances.setdefault(agent_id, initial_balance)
         self._payments = payments if payments is not None else {}
         self._escrows = escrows if escrows is not None else {}
+        self._cases = cases if cases is not None else {}
         self._evidence = evidence if evidence is not None else {}
         self._intents = intents if intents is not None else {}
         self._settled_meta = settled_meta if settled_meta is not None else {}
@@ -199,7 +247,7 @@ class TvistEscrowPayments:
 
         Example::
 
-            bal = pay.balance(AgentId("payer"))
+            bal = pay.balance(AgentId("buyer"))
         """
         return self._balances.get(agent, 0)
 
@@ -277,7 +325,8 @@ class TvistEscrowPayments:
         """Reverse a *reversible* payment (payee→payer).
 
         Refuses an irrevocable A2A settlement: the only sanctioned reversal for
-        those is :meth:`recall_a2a`, which requires a verifiable-intent mismatch.
+        those is :meth:`recall_a2a`. v1 disputes route through
+        :meth:`resolve_dispute` (evidence-gated) rather than this unguarded path.
 
         Example::
 
@@ -296,7 +345,7 @@ class TvistEscrowPayments:
         self._credit(receipt.payer, receipt.amount.amount)
         self._settled_meta.setdefault(ref, {})["reversed"] = True
 
-    # -- evidence layer (content-addressed delivery / attestation proofs) --
+    # -- evidence layer (content-addressed) -------------------------------
 
     def register_evidence(self, artifact: dict[str, Any]) -> str:
         """Store an evidence artifact and return its ``sha256`` content address.
@@ -322,6 +371,91 @@ class TvistEscrowPayments:
         if artifact is None:
             return False
         return content_hash(artifact) == evidence_hash
+
+    # -- dispute lifecycle (reversible card / BNPL) -----------------------
+
+    def open_dispute(
+        self,
+        payment_ref: PaymentRef,
+        reason_code: str,
+        disputant: AgentId,
+    ) -> TvistCase:
+        """Open a dispute case against a settled payment.
+
+        Example::
+
+            case = pay.open_dispute(PaymentRef("p1"), "fraud", AgentId("buyer"))
+        """
+        if payment_ref not in self._payments:
+            msg = f"Cannot dispute unknown payment: {payment_ref}"
+            raise ValueError(msg)
+        if reason_code not in REASON_CODES:
+            msg = f"Unknown reason code: {reason_code}"
+            raise ValueError(msg)
+        case_id = f"case-{payment_ref}"
+        case = TvistCase(
+            case_id=case_id,
+            payment_ref=payment_ref,
+            reason_code=reason_code,
+            disputant=disputant,
+        )
+        self._cases[case_id] = case
+        return case
+
+    def assemble_evidence(self, case_id: str, evidence_hashes: list[str]) -> float:
+        """Cite evidence on a case and return its deterministic win-probability.
+
+        Only artifacts that :meth:`verify_evidence` accepts contribute; each adds
+        its category weight (:data:`EVIDENCE_WEIGHTS`). The sum is clamped to
+        ``[0, 1]``. With no verified evidence the score is ``0.0`` — the issuer has
+        nothing to represent with, so the case will concede a refund.
+
+        Example::
+
+            score = pay.assemble_evidence("case-p1", [h_delivery, h_device])
+        """
+        case = self._cases[case_id]
+        score = 0.0
+        for h in evidence_hashes:
+            if not self.verify_evidence(h):
+                continue
+            case.evidence_hashes.append(h)
+            kind = str(self._evidence[h].get("kind", ""))
+            score += EVIDENCE_WEIGHTS.get(kind, 0.0)
+        case.win_probability = min(1.0, score)
+        return case.win_probability
+
+    def resolve_dispute(
+        self,
+        case_id: str,
+        threshold: float = DEFAULT_FIGHT_THRESHOLD,
+    ) -> tuple[str, bool]:
+        """Adjudicate a case: represent (fight) above threshold, else refund.
+
+        Returns ``(outcome, merchant_won)``. Above ``threshold`` the merchant has
+        sufficient verified evidence → ``("represented", True)`` and **no reversal
+        executes**, so a friendly-fraud claim recovers nothing. Below it the issuer
+        concedes → ``("refunded", False)`` and the funds are returned to the
+        disputant. This is the evidence gate: a refund is impossible without the
+        case's evidence failing to clear the bar.
+
+        Example::
+
+            outcome, won = pay.resolve_dispute("case-p1")
+        """
+        case = self._cases[case_id]
+        if case.win_probability >= threshold:
+            case.outcome = "represented"
+            case.merchant_won = True
+            return "represented", True
+        receipt = self._payments[case.payment_ref]
+        if not self._settled_meta.get(case.payment_ref, {}).get("reversed"):
+            self._debit(receipt.payee, receipt.amount.amount)
+            self._credit(receipt.payer, receipt.amount.amount)
+            self._settled_meta.setdefault(case.payment_ref, {})["reversed"] = True
+        case.outcome = "refunded"
+        case.merchant_won = False
+        return "refunded", False
 
     # -- intent vault ------------------------------------------------------
 
@@ -409,7 +543,6 @@ class TvistEscrowPayments:
         meta = self._settled_meta.setdefault(ref, {})
         if meta.get("reversed"):
             return False
-        # Mismatch == mandate does NOT cover what was settled.
         if self.intent_covers(intent_ref, receipt.amount.amount, receipt.payee):
             return False
         self._debit(receipt.payee, receipt.amount.amount)

@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-"""End-to-end + adversarial-discrimination tests for the Tvist escrow scenario.
+"""End-to-end + adversarial-discrimination tests for the Tvist scenarios.
 
-For Tvist 2.0 (``tvist_escrow`` — irrevocable A2A + escrow + intent vault):
+For both Tvist 2.0 (``tvist_escrow`` — the agentic-commerce headline) and Tvist
+1.0 (``tvist_disputes`` — the shared dispute foundation):
 
 1. **Discrimination** — the same scenario booted through the ``tvist`` payments
    plugin MUST pass every validator, and through the ``prepaid_credits`` reference
-   plugin MUST fail the three adversarial gates (irrevocability, escrow-condition,
-   mandate). This is the charter's bar: "a validator catches a class of attacks
-   the default reference plugin would fail."
+   plugin MUST fail the adversarial validator(s). This is the charter's bar:
+   "a validator catches a class of attacks the default reference plugin would
+   fail."
 2. **Determinism** — same seed → byte-identical trace.
 
 Everything runs the real ``Simulator`` via ``ScenarioRunner``; nothing past the
@@ -26,6 +27,7 @@ from nest_core.scenario import ScenarioConfig
 from nest_core.validators import validate_trace
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_DISPUTES = _REPO_ROOT / "scenarios" / "tvist_disputes.yaml"
 _ESCROW = _REPO_ROOT / "scenarios" / "tvist_escrow.yaml"
 
 
@@ -45,6 +47,11 @@ def _run(scenario_path: Path, payments: str, seed: int = 42) -> Path:
 
 def _results(trace: Path, scenario_type: str) -> dict[str, bool]:
     return {r.name: r.passed for r in validate_trace(trace, scenario_type)}
+
+
+# ---------------------------------------------------------------------------
+# Tvist 2.0 — irrevocable A2A + escrow + intent vault (the headline)
+# ---------------------------------------------------------------------------
 
 
 def test_escrow_tvist_passes_all_validators() -> None:
@@ -67,4 +74,31 @@ def test_escrow_deterministic() -> None:
     """Same seed → byte-identical escrow trace."""
     a = _run(_ESCROW, "tvist", seed=1337).read_bytes()
     b = _run(_ESCROW, "tvist", seed=1337).read_bytes()
+    assert a == b
+
+
+# ---------------------------------------------------------------------------
+# Tvist 1.0 — dispute deflection (the shared foundation)
+# ---------------------------------------------------------------------------
+
+
+def test_disputes_tvist_passes_all_validators() -> None:
+    """Under ``payments: tvist`` every dispute validator passes."""
+    results = _results(_run(_DISPUTES, "tvist"), "tvist_disputes")
+    assert results, "no validators ran"
+    assert all(results.values()), f"unexpected failures: {results}"
+
+
+def test_disputes_baseline_leaks_friendly_fraud() -> None:
+    """``prepaid_credits`` refunds friendly fraud, so the evidence gate fails."""
+    results = _results(_run(_DISPUTES, "prepaid_credits"), "tvist_disputes")
+    assert results["tvist_evidence_gated"] is False
+    assert results["tvist_no_blind_refund"] is False
+    assert results["tvist_conservation"] is True
+
+
+def test_disputes_deterministic() -> None:
+    """Same seed → byte-identical dispute trace."""
+    a = _run(_DISPUTES, "tvist", seed=7).read_bytes()
+    b = _run(_DISPUTES, "tvist", seed=7).read_bytes()
     assert a == b

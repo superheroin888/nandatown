@@ -1838,6 +1838,11 @@ def validate_receipt_reputation_honest_confidence(
 # Tvist dispute + escrow validators (adversarial)
 # ---------------------------------------------------------------------------
 
+# Evidence categories that, when verified, prove the cardholder received the
+# goods — so a dispute the merchant can cite them against is friendly fraud and
+# must never be refunded.
+_TVIST_STRONG_EVIDENCE = frozenset({"delivery_signed", "delivery"})
+
 
 def _tvist_lines(events: list[dict[str, Any]], tag: str) -> list[list[str]]:
     """Return the ``:``-split fields of every ``tvist:<tag>:...`` broadcast line.
@@ -1891,6 +1896,118 @@ def validate_tvist_conservation(
             )
         ]
     return [ValidationResult("tvist_conservation", True, f"funds conserved at {totals[0]}")]
+
+
+def validate_tvist_evidence_gated(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """A dispute the merchant can rebut with verified delivery evidence is never refunded.
+
+    Builds, per txn, whether a verified ``delivery_signed``/``delivery`` artifact
+    was cited, then checks the outcome. The protocol holds iff:
+
+    * at least one such friendly-fraud txn exists (the scenario exercised it), and
+    * **every** txn with verified delivery evidence resolved as ``represented``
+      with ``merchant_won`` — the reversal was deflected.
+
+    ``payments: tvist`` PASSES (the evidence gate represents friendly fraud);
+    ``payments: prepaid_credits`` FAILS (it refunds every dispute, reimbursing the
+    fraud). A plugin that emits no outcomes also fails — without crashing.
+
+    Example::
+
+        results = validate_tvist_evidence_gated(events)
+    """
+    strong: dict[str, bool] = defaultdict(bool)
+    for parts in _tvist_lines(events, "evidence"):
+        # tvist:evidence:<txn>:<hash8>:<verified>:<kind>
+        if len(parts) < 6:
+            continue
+        txn, verified, kind = parts[2], parts[4], parts[5]
+        if verified == "1" and kind in _TVIST_STRONG_EVIDENCE:
+            strong[txn] = True
+
+    outcomes: dict[str, tuple[str, str]] = {}
+    for parts in _tvist_lines(events, "outcome"):
+        # tvist:outcome:<txn>:<outcome>:<merchant_won>
+        if len(parts) < 5:
+            continue
+        outcomes[parts[2]] = (parts[3], parts[4])
+
+    friendly_fraud = [t for t, has in strong.items() if has]
+    if not friendly_fraud:
+        return [
+            ValidationResult(
+                "tvist_evidence_gated",
+                False,
+                "no friendly-fraud txn with verified delivery evidence was exercised",
+            )
+        ]
+
+    leaks: list[str] = []
+    for txn in friendly_fraud:
+        outcome = outcomes.get(txn)
+        if outcome is None:
+            leaks.append(f"{txn}: no outcome emitted")
+        elif outcome != ("represented", "1"):
+            leaks.append(f"{txn}: refunded despite verified delivery evidence (outcome {outcome})")
+
+    if leaks:
+        return [ValidationResult("tvist_evidence_gated", False, "; ".join(leaks))]
+    return [
+        ValidationResult(
+            "tvist_evidence_gated",
+            True,
+            f"{len(friendly_fraud)} friendly-fraud disputes represented, none refunded",
+        )
+    ]
+
+
+def validate_tvist_no_blind_refund(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """A refund only issues when the win-probability is below the fight threshold.
+
+    Independent of the evidence check: it reads the issuer's own ``tvist:score``
+    line and asserts no ``refunded`` outcome carries a score at or above its
+    threshold. Catches a plugin that concedes money it had the evidence to fight.
+
+    Example::
+
+        results = validate_tvist_no_blind_refund(events)
+    """
+    scores: dict[str, tuple[float, float]] = {}
+    for parts in _tvist_lines(events, "score"):
+        # tvist:score:<txn>:<score>:<threshold>
+        if len(parts) < 5:
+            continue
+        try:
+            scores[parts[2]] = (float(parts[3]), float(parts[4]))
+        except ValueError:
+            continue
+
+    blind: list[str] = []
+    refunds = 0
+    for parts in _tvist_lines(events, "outcome"):
+        if len(parts) < 5 or parts[3] != "refunded":
+            continue
+        refunds += 1
+        score_threshold = scores.get(parts[2])
+        if score_threshold is not None and score_threshold[0] >= score_threshold[1]:
+            blind.append(
+                f"{parts[2]}: refunded at score {score_threshold[0]:.2f} "
+                f">= threshold {score_threshold[1]:.2f}"
+            )
+
+    if blind:
+        return [ValidationResult("tvist_no_blind_refund", False, "; ".join(blind))]
+    return [
+        ValidationResult(
+            "tvist_no_blind_refund",
+            True,
+            f"{refunds} refund(s), all below the fight threshold",
+        )
+    ]
 
 
 def validate_tvist_irrevocability(
@@ -2078,6 +2195,11 @@ VALIDATORS: dict[str, list[Any]] = {
     "receipt_reputation": [
         validate_receipt_reputation_ring_severed,
         validate_receipt_reputation_honest_confidence,
+    ],
+    "tvist_disputes": [
+        validate_tvist_evidence_gated,
+        validate_tvist_no_blind_refund,
+        validate_tvist_conservation,
     ],
     "tvist_escrow": [
         validate_tvist_irrevocability,

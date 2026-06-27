@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for the Tvist escrow + intent-vault + irrevocable-recall payments plugin.
+"""Tests for the Tvist dispute + escrow + intent-vault payments plugin.
 
-Covers the stock ``Payments`` protocol, content-addressed evidence, the
-irrevocability gate (no unilateral clawback of a settled A2A payment), escrow
+Covers the stock ``Payments`` protocol, content-addressed evidence, the v1
+evidence gate (friendly fraud is represented, legitimate disputes refund), the
+v2 irrevocability gate (no unilateral clawback of a settled A2A payment), escrow
 release conditions, agent mandate enforcement, and the conservation-of-funds
 invariant under a random operation sequence.
 """
@@ -15,16 +16,17 @@ from typing import Any
 import pytest
 from nest_core.types import AgentId, Money, PaymentRef, PaymentStatus
 from nest_plugins_reference.payments.tvist import (
+    DEFAULT_FIGHT_THRESHOLD,
     IntentRecord,
     ReleaseCondition,
-    TvistEscrowPayments,
+    TvistPayments,
     content_hash,
 )
 
 
-def _fresh(initial: int = 10000) -> TvistEscrowPayments:
+def _fresh(initial: int = 10000) -> TvistPayments:
     """A ledger where ``buyer`` holds ``initial`` and everyone else starts at 0."""
-    return TvistEscrowPayments(
+    return TvistPayments(
         AgentId("buyer"),
         balances={AgentId("buyer"): initial, AgentId("merchant"): 0, AgentId("payee"): 0},
     )
@@ -75,6 +77,50 @@ class TestEvidence:
         h = pay.register_evidence({"kind": "delivery_signed", "carrier": "dhl"})
         assert pay.verify_evidence(h)
         assert not pay.verify_evidence("0" * 64)
+
+
+class TestV1DisputeGate:
+    """v1: representment is gated on verified evidence clearing the fight threshold."""
+
+    @pytest.mark.asyncio
+    async def test_friendly_fraud_is_represented_not_refunded(self) -> None:
+        # Cardholder received the goods; merchant holds a signed delivery proof
+        # plus a device-match signal — together they clear the fight threshold.
+        pay = _fresh()
+        await pay.pay(AgentId("merchant"), Money(amount=200), PaymentRef("p1"))
+        h = pay.register_evidence({"kind": "delivery_signed", "ref": "p1"})
+        h2 = pay.register_evidence({"kind": "device_match", "ref": "p1"})
+        case = pay.open_dispute(PaymentRef("p1"), "fraud", AgentId("buyer"))
+        score = pay.assemble_evidence(case.case_id, [h, h2])
+        assert score >= DEFAULT_FIGHT_THRESHOLD  # 0.55 + 0.15 = 0.70
+        outcome, merchant_won = pay.resolve_dispute(case.case_id)
+        assert outcome == "represented"
+        assert merchant_won
+        # The friendly-fraud claimant recovered nothing.
+        assert pay.balance(AgentId("merchant")) == 200
+        assert pay.balance(AgentId("buyer")) == 9800
+
+    @pytest.mark.asyncio
+    async def test_legitimate_dispute_refunds(self) -> None:
+        # Goods never arrived; merchant has no delivery evidence to represent with.
+        pay = _fresh()
+        await pay.pay(AgentId("merchant"), Money(amount=200), PaymentRef("p1"))
+        case = pay.open_dispute(PaymentRef("p1"), "goods_not_received", AgentId("buyer"))
+        pay.assemble_evidence(case.case_id, [])  # nothing to cite
+        outcome, merchant_won = pay.resolve_dispute(case.case_id)
+        assert outcome == "refunded"
+        assert not merchant_won
+        assert pay.balance(AgentId("buyer")) == 10000
+
+    @pytest.mark.asyncio
+    async def test_unverifiable_evidence_does_not_count(self) -> None:
+        pay = _fresh()
+        await pay.pay(AgentId("merchant"), Money(amount=200), PaymentRef("p1"))
+        case = pay.open_dispute(PaymentRef("p1"), "fraud", AgentId("buyer"))
+        # Cite a hash that was never registered — it must not move the score.
+        score = pay.assemble_evidence(case.case_id, ["deadbeef" * 8])
+        assert score == 0.0
+        assert pay.resolve_dispute(case.case_id)[0] == "refunded"
 
 
 class TestV2Irrevocability:
@@ -160,8 +206,8 @@ class TestConservation:
         escrows_store: dict[str, Any] = {}
         initial_total = sum(balances.values())
 
-        def handle(owner: AgentId) -> TvistEscrowPayments:
-            return TvistEscrowPayments(
+        def handle(owner: AgentId) -> TvistPayments:
+            return TvistPayments(
                 owner, balances=balances, payments=payments_store, escrows=escrows_store
             )
 

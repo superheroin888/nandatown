@@ -106,6 +106,9 @@ stack where value moves: `payments`.
 
 ---
 
-*See [`README.md`](README.md) for the full layer-by-layer build, and
+*The same `payments` plugin also ships the foundation it extends — Tvist 1.0,
+evidence-gated dispute deflection for card/BNPL rails (`scenarios/tvist_disputes.yaml`):
+friendly fraud is represented, not refunded. See [`README.md`](README.md) for the
+full layer-by-layer build and
 [the problem brief](../hackathon/problems/12-payments-tvist-escrow-agentic-commerce.md)
 for the success criteria this submission meets.*
