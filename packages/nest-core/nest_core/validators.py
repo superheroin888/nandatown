@@ -1835,6 +1835,196 @@ def validate_receipt_reputation_honest_confidence(
 
 
 # ---------------------------------------------------------------------------
+# Tvist dispute + escrow validators (adversarial)
+# ---------------------------------------------------------------------------
+
+
+def _tvist_lines(events: list[dict[str, Any]], tag: str) -> list[list[str]]:
+    """Return the ``:``-split fields of every ``tvist:<tag>:...`` broadcast line.
+
+    Reads from send/broadcast bodies (signature suffix stripped), so the checks
+    judge the protocol the orchestrator actually emitted.
+
+    Example::
+
+        outcomes = _tvist_lines(events, "outcome")
+    """
+    prefix = f"tvist:{tag}:"
+    out: list[list[str]] = []
+    for ev in events:
+        if ev.get("kind") not in ("send", "broadcast"):
+            continue
+        msg = _message_body(ev)
+        if msg.startswith(prefix):
+            out.append(msg.split(":"))
+    return out
+
+
+def validate_tvist_conservation(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """Total system funds are identical across every ``tvist:conservation`` snapshot.
+
+    A dispute or escrow flow that creates or destroys money (a double refund, a
+    release that also leaves the hold funded) shows up as a changed total. With a
+    single snapshot the check still confirms one was emitted.
+
+    Example::
+
+        results = validate_tvist_conservation(events)
+    """
+    totals: list[int] = []
+    for parts in _tvist_lines(events, "conservation"):
+        if len(parts) >= 3:
+            try:
+                totals.append(int(parts[2]))
+            except ValueError:
+                continue
+    if not totals:
+        return [ValidationResult("tvist_conservation", False, "no conservation snapshot emitted")]
+    if len(set(totals)) != 1:
+        return [
+            ValidationResult(
+                "tvist_conservation",
+                False,
+                f"funds not conserved across snapshots: {sorted(set(totals))}",
+            )
+        ]
+    return [ValidationResult("tvist_conservation", True, f"funds conserved at {totals[0]}")]
+
+
+def validate_tvist_irrevocability(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """A settled irrevocable A2A payment is reversed only on a verifiable-intent mismatch.
+
+    Reads ``tvist:settle`` (with the irrevocable flag) and ``tvist:recall`` lines.
+    The protocol holds iff at least one irrevocable settlement occurred and
+    **every** reversal (``reversed=1``) is backed by ``intent_valid=1`` — proof the
+    agent exceeded its mandate. A unilateral clawback (``reversed=1`` with
+    ``intent_valid=0``) is a violation.
+
+    ``payments: tvist`` PASSES (``recall_a2a`` refuses a clawback with no
+    mismatch); ``payments: prepaid_credits`` FAILS (``refund`` reverses any
+    settled payment unconditionally).
+
+    Example::
+
+        results = validate_tvist_irrevocability(events)
+    """
+    irrevocable: set[str] = set()
+    for parts in _tvist_lines(events, "settle"):
+        # tvist:settle:<txn>:<rail>:<payer>:<payee>:<amount>:<irrevocable>
+        if len(parts) >= 8 and parts[7] == "1":
+            irrevocable.add(parts[2])
+
+    if not irrevocable:
+        return [
+            ValidationResult(
+                "tvist_irrevocability",
+                False,
+                "no irrevocable A2A settlement was exercised",
+            )
+        ]
+
+    clawbacks: list[str] = []
+    for parts in _tvist_lines(events, "recall"):
+        # tvist:recall:<txn>:<intent_valid>:<reversed>
+        if len(parts) < 5:
+            continue
+        txn, intent_valid, reversed_ = parts[2], parts[3], parts[4]
+        if reversed_ == "1" and intent_valid != "1":
+            clawbacks.append(f"{txn}: reversed with no intent mismatch (unilateral clawback)")
+
+    if clawbacks:
+        return [ValidationResult("tvist_irrevocability", False, "; ".join(clawbacks))]
+    return [
+        ValidationResult(
+            "tvist_irrevocability",
+            True,
+            f"{len(irrevocable)} irrevocable settlement(s), no unilateral clawback",
+        )
+    ]
+
+
+def validate_tvist_escrow_conditions(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """Escrow funds are released only when the release condition is satisfied.
+
+    Reads ``tvist:release:<eid>:<condition_met>:<released>``: a ``released=1`` with
+    ``condition_met=0`` means a payee drained an escrow it never delivered
+    against. ``payments: tvist`` PASSES (release refuses an unsatisfied
+    condition); a plugin with no escrow that pays out immediately FAILS.
+
+    Example::
+
+        results = validate_tvist_escrow_conditions(events)
+    """
+    releases = _tvist_lines(events, "release")
+    if not releases:
+        return [
+            ValidationResult(
+                "tvist_escrow_conditions",
+                False,
+                "no escrow release was exercised",
+            )
+        ]
+    violations: list[str] = []
+    for parts in releases:
+        if len(parts) < 5:
+            continue
+        eid, condition_met, released = parts[2], parts[3], parts[4]
+        if released == "1" and condition_met != "1":
+            violations.append(f"{eid}: released with unsatisfied condition")
+    if violations:
+        return [ValidationResult("tvist_escrow_conditions", False, "; ".join(violations))]
+    return [
+        ValidationResult(
+            "tvist_escrow_conditions",
+            True,
+            f"{len(releases)} release attempt(s), none bypassed its condition",
+        )
+    ]
+
+
+def validate_tvist_mandate(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """An agent-initiated payment settles only within its stored mandate.
+
+    Reads ``tvist:mandate:<txn>:<agent>:<within_mandate>:<settled>``: a
+    ``settled=1`` with ``within_mandate=0`` is an over-mandate payment that the
+    intent vault should have blocked. ``payments: tvist`` PASSES (settle refuses
+    an over-budget / off-allowlist payment); a mandate-blind plugin FAILS.
+
+    Example::
+
+        results = validate_tvist_mandate(events)
+    """
+    lines = _tvist_lines(events, "mandate")
+    if not lines:
+        return [ValidationResult("tvist_mandate", False, "no agent-mandate check was exercised")]
+    violations: list[str] = []
+    for parts in lines:
+        # tvist:mandate:<txn>:<agent>:<within_mandate>:<settled>
+        if len(parts) < 6:
+            continue
+        txn, agent, within, settled = parts[2], parts[3], parts[4], parts[5]
+        if settled == "1" and within != "1":
+            violations.append(f"{txn}: agent {agent} settled outside its mandate")
+    if violations:
+        return [ValidationResult("tvist_mandate", False, "; ".join(violations))]
+    return [
+        ValidationResult(
+            "tvist_mandate",
+            True,
+            f"{len(lines)} agent payment(s) checked, none exceeded mandate",
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Validator registry
 # ---------------------------------------------------------------------------
 
@@ -1888,5 +2078,11 @@ VALIDATORS: dict[str, list[Any]] = {
     "receipt_reputation": [
         validate_receipt_reputation_ring_severed,
         validate_receipt_reputation_honest_confidence,
+    ],
+    "tvist_escrow": [
+        validate_tvist_irrevocability,
+        validate_tvist_escrow_conditions,
+        validate_tvist_mandate,
+        validate_tvist_conservation,
     ],
 }

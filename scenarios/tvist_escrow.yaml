@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: Apache-2.0
+# Tvist 2.0: irrevocable A2A push payments, programmable escrow, and the
+# cross-protocol intent vault.
+#
+# Six flow types (two each) interleave legitimate and adversarial behaviour:
+# legit escrow release, escrow drain without delivery, unilateral clawback of an
+# irrevocable payment, a justified intent-mismatch recall, an over-mandate agent
+# settlement, and a within-mandate one. Under `payments: tvist` every gate holds
+# and all four validators PASS. Swap to `payments: prepaid_credits` (below) and
+# the irrevocability, escrow-condition, and mandate validators all FAIL --
+# a generic refund/pay ledger cannot make push payments irrevocable, cannot hold
+# escrow against a condition, and cannot enforce an agent mandate.
+
+name: tvist_escrow
+description: "Irrevocable A2A + escrow + intent vault; 6 flow types, 3 adversarial."
+
+tier: 1
+seed: 42
+
+agents:
+  count: 25
+  brain: state-machine
+  roles:
+    - name: party
+      count: 24
+
+layers:
+  transport: in_memory
+  comms: nest_native
+  identity: did_key
+  registry: in_memory
+  auth: jwt
+  trust: score_average
+  # tvist enforces irrevocability, escrow release-conditions, and agent mandates.
+  # Switch to `prepaid_credits` to watch the three adversarial validators fail.
+  payments: tvist
+  coordination: contract_net
+  negotiation: alternating_offers
+  memory: blackboard
+  privacy: noop
+  datafacts: datafacts_v1
+
+task:
+  type: tvist_escrow
+  config:
+    per_kind: 2
+
+failures:
+  message_drop: 0.0
+
+duration: "ticks: 10000"
+
+metrics:
+  - message_count
+  - agent_count
+
+output:
+  trace: ./traces/tvist_escrow.jsonl

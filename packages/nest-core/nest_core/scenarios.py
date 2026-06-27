@@ -97,3 +97,7 @@ def _try_load_builtin(name: str) -> None:
         )
 
         register_scenario("receipt_reputation", receipt_reputation_factory)
+    elif name == "tvist_escrow":
+        from nest_core.scenarios_builtin.tvist_escrow import tvist_escrow_factory
+
+        register_scenario("tvist_escrow", tvist_escrow_factory)
