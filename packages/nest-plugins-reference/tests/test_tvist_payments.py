@@ -79,6 +79,74 @@ class TestEvidence:
         assert not pay.verify_evidence("0" * 64)
 
 
+class TestRegions:
+    """The governing region is negotiated up front and its regime is enforced."""
+
+    def test_negotiate_picks_client_preference_in_agent_set(self) -> None:
+        # Client prefers Pix; both accept SEPA and Pix -> client's first wins.
+        agreed = TvistPayments.negotiate_region(["br_pix", "eu_sepa"], ["eu_sepa", "br_pix"])
+        assert agreed == "br_pix"
+
+    def test_negotiate_no_overlap_returns_none(self) -> None:
+        assert TvistPayments.negotiate_region(["br_pix"], ["us_fednow"]) is None
+
+    def test_negotiate_unknown_region_is_skipped(self) -> None:
+        assert TvistPayments.negotiate_region(["atlantis", "eu_sepa"], ["eu_sepa"]) == "eu_sepa"
+
+    @pytest.mark.asyncio
+    async def test_nordic_settlement_is_reversible(self) -> None:
+        pay = _fresh()
+        # Nordic BNPL is not irrevocable, so a direct refund is allowed.
+        await pay.settle_a2a(AgentId("payee"), Money(amount=100), PaymentRef("n1"), region="nordic")
+        await pay.refund(PaymentRef("n1"))
+        assert pay.balance(AgentId("payee")) == 0
+
+    @pytest.mark.asyncio
+    async def test_fednow_forbids_recall_even_on_mismatch(self) -> None:
+        pay = _fresh()
+        await pay.settle_a2a(
+            AgentId("payee"), Money(amount=300), PaymentRef("f1"), region="us_fednow"
+        )
+        pay.store_intent(IntentRecord("i1", AgentId("buyer"), budget=100))  # clear mismatch
+        # FedNow's regime disallows recall outright — escrow is the only protection.
+        assert pay.recall_a2a(PaymentRef("f1"), "i1") is False
+        assert pay.balance(AgentId("payee")) == 300
+
+    @pytest.mark.asyncio
+    async def test_pix_recall_outside_window_is_refused(self) -> None:
+        pay = _fresh()
+        await pay.settle_a2a(
+            AgentId("payee"), Money(amount=300), PaymentRef("p1"), region="br_pix", at_tick=0.0
+        )
+        pay.store_intent(IntentRecord("i1", AgentId("buyer"), budget=100))  # mismatch
+        # Pix MED 2.0 window is 11 ticks; a recall at tick 50 is too late.
+        assert pay.recall_a2a(PaymentRef("p1"), "i1", current_tick=50.0) is False
+        # Inside the window the same justified recall lands.
+        await pay.settle_a2a(
+            AgentId("payee"), Money(amount=120), PaymentRef("p2"), region="br_pix", at_tick=0.0
+        )
+        assert pay.recall_a2a(PaymentRef("p2"), "i1", current_tick=5.0) is True
+
+    @pytest.mark.asyncio
+    async def test_dispute_reason_must_be_in_region_taxonomy(self) -> None:
+        pay = _fresh()
+        await pay.pay(AgentId("merchant"), Money(amount=100), PaymentRef("d1"))
+        # pix_med_return is not a Nordic reason code.
+        with pytest.raises(ValueError, match="not accepted in region"):
+            pay.open_dispute(PaymentRef("d1"), "pix_med_return", AgentId("buyer"), region="nordic")
+        # A Nordic-valid reason is accepted.
+        case = pay.open_dispute(
+            PaymentRef("d1"), "goods_not_received", AgentId("buyer"), region="nordic"
+        )
+        assert case.region == "nordic"
+
+    def test_region_requiring_delivery_rejects_bare_timer_escrow(self) -> None:
+        pay = _fresh()
+        cond = ReleaseCondition(type="time_elapsed", expected="t")
+        with pytest.raises(ValueError, match="requires a delivery"):
+            pay.open_escrow("e1", AgentId("buyer"), AgentId("payee"), 100, cond, region="br_pix")
+
+
 class TestV1DisputeGate:
     """v1: representment is gated on verified evidence clearing the fight threshold."""
 

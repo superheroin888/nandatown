@@ -2105,6 +2105,122 @@ def validate_tvist_escrow_conditions(
     ]
 
 
+def validate_tvist_region_agreed(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """Every transaction that settled did so under a mutually-agreed region.
+
+    Reads ``tvist:region`` (the negotiated outcome + both option lists) and
+    ``tvist:settle`` lines. The protocol holds iff at least one flow reached
+    agreement and **every** settled flow names an ``agreed`` region that lies in
+    the intersection of the client's and agent's option lists. A settlement with
+    ``agreed=none`` (or a region neither side offered) is a transaction that
+    proceeded without a governing regime — the violation.
+
+    ``payments: tvist`` PASSES (it negotiates a region before settling, and skips
+    the no-overlap flow); ``payments: prepaid_credits`` FAILS (no negotiation, so
+    it settles every flow ungoverned).
+
+    Example::
+
+        results = validate_tvist_region_agreed(events)
+    """
+    agreed: dict[str, tuple[str, set[str]]] = {}
+    for parts in _tvist_lines(events, "region"):
+        # tvist:region:<flow>:<agreed>:<client_opts>:<agent_opts>
+        if len(parts) < 6:
+            continue
+        flow, agreed_region = parts[2], parts[3]
+        client = set(parts[4].split("|")) if parts[4] else set[str]()
+        agent = set(parts[5].split("|")) if parts[5] else set[str]()
+        agreed[flow] = (agreed_region, client & agent)
+
+    settled = {parts[2] for parts in _tvist_lines(events, "settle") if len(parts) >= 3}
+    if not settled:
+        return [ValidationResult("tvist_region_agreed", False, "no settlement was exercised")]
+
+    violations: list[str] = []
+    for flow in sorted(settled):
+        info = agreed.get(flow)
+        if info is None:
+            violations.append(f"{flow}: settled with no region negotiation")
+            continue
+        agreed_region, overlap = info
+        if agreed_region == "none" or agreed_region not in overlap:
+            violations.append(f"{flow}: settled under ungoverned region {agreed_region!r}")
+
+    if violations:
+        return [ValidationResult("tvist_region_agreed", False, "; ".join(violations))]
+    return [
+        ValidationResult(
+            "tvist_region_agreed",
+            True,
+            f"{len(settled)} settlement(s), each under a mutually-agreed region",
+        )
+    ]
+
+
+def validate_tvist_region_adherence(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """Recalls and disputes adhere to the regime of their agreed region.
+
+    Two regime rules, read off the trace (the region facts are emitted from the
+    canonical region registry, so the check is plugin-independent):
+
+    * a recall in a region whose regime disallows it (``recall_allowed=0``, e.g.
+      FedNow) must **not** reverse — escrow is the only protection there, and
+    * a dispute whose reason code is outside the agreed region's taxonomy
+      (``in_taxonomy=0``) must **not** be accepted.
+
+    ``payments: tvist`` PASSES (the regime gates both); ``payments:
+    prepaid_credits`` FAILS (``refund`` reverses the FedNow recall and the
+    region-blind ledger accepts the off-taxonomy reason).
+
+    Example::
+
+        results = validate_tvist_region_adherence(events)
+    """
+    recalls = _tvist_lines(events, "recall")
+    reasons = _tvist_lines(events, "reason")
+    if not recalls and not reasons:
+        return [
+            ValidationResult("tvist_region_adherence", False, "no recall or dispute was exercised")
+        ]
+
+    violations: list[str] = []
+    for parts in recalls:
+        # tvist:recall:<flow>:<region>:<recall_allowed>:<intent_valid>:<reversed>
+        if len(parts) < 7:
+            continue
+        flow, region, recall_allowed, reversed_ = parts[2], parts[3], parts[4], parts[6]
+        if recall_allowed == "0" and reversed_ == "1":
+            violations.append(f"{flow}: recall reversed in no-recall region {region!r}")
+    for parts in reasons:
+        # tvist:reason:<flow>:<region>:<reason>:<in_taxonomy>:<accepted>
+        if len(parts) < 7:
+            continue
+        flow, region, reason, in_taxonomy, accepted = (
+            parts[2],
+            parts[3],
+            parts[4],
+            parts[5],
+            parts[6],
+        )
+        if in_taxonomy == "0" and accepted == "1":
+            violations.append(f"{flow}: reason {reason!r} accepted outside region {region!r}")
+
+    if violations:
+        return [ValidationResult("tvist_region_adherence", False, "; ".join(violations))]
+    return [
+        ValidationResult(
+            "tvist_region_adherence",
+            True,
+            f"{len(recalls)} recall(s) and {len(reasons)} dispute(s) adhered to their regimes",
+        )
+    ]
+
+
 def validate_tvist_mandate(
     events: list[dict[str, Any]],
 ) -> list[ValidationResult]:
@@ -2205,6 +2321,11 @@ VALIDATORS: dict[str, list[Any]] = {
         validate_tvist_irrevocability,
         validate_tvist_escrow_conditions,
         validate_tvist_mandate,
+        validate_tvist_conservation,
+    ],
+    "tvist_region": [
+        validate_tvist_region_agreed,
+        validate_tvist_region_adherence,
         validate_tvist_conservation,
     ],
 }

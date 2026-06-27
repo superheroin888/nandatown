@@ -42,8 +42,15 @@ dispute taxonomy.
 ## What Tvist is
 
 A thin **orchestration layer** (not a bank — we orchestrate regulated custody
-partners) with three primitives, all on the `payments` layer:
+partners) with a governing-region base feature and three primitives, all on the
+`payments` layer:
 
+0. **Region chosen & negotiated up front (base feature).** A dispute is
+   meaningless without a jurisdiction. Before any funds move, the client and the
+   agent agree which region's regime governs the transaction — Pix's 11-day
+   recovery, SEPA's 10-second recall window, FedNow's *no-recall*, a Nordic
+   reversible chargeback — from a menu of options, not a hard-coded default. The
+   transaction is bound to that regime; escrow, recall, and disputes all obey it.
 1. **Programmable escrow.** Hold funds across A2A rails until a typed condition —
    delivery proof, time, or attestation — is satisfied. Release is *refused*
    until then; a contest opens a mediation case.
@@ -51,8 +58,9 @@ partners) with three primitives, all on the `payments` layer:
    (budget, merchant allowlist) behind any agent payment, indexed canonically
    across MC-VI / AP2 / ACP / x402.
 3. **Irrevocability-aware recall.** A settled push payment is reversed **only**
-   when a recall cites an intent mismatch (`agent_exceeded_mandate`). No
-   unilateral clawback — the thing Pix/SEPA rulebooks exist to prevent.
+   when a recall cites an intent mismatch (`agent_exceeded_mandate`) *and* the
+   agreed region permits it within its window. No unilateral clawback — the thing
+   Pix/SEPA rulebooks exist to prevent.
 
 ---
 

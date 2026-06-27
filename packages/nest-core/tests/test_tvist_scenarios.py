@@ -29,6 +29,7 @@ from nest_core.validators import validate_trace
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DISPUTES = _REPO_ROOT / "scenarios" / "tvist_disputes.yaml"
 _ESCROW = _REPO_ROOT / "scenarios" / "tvist_escrow.yaml"
+_REGION = _REPO_ROOT / "scenarios" / "tvist_region.yaml"
 
 
 def _run(scenario_path: Path, payments: str, seed: int = 42) -> Path:
@@ -101,4 +102,31 @@ def test_disputes_deterministic() -> None:
     """Same seed → byte-identical dispute trace."""
     a = _run(_DISPUTES, "tvist", seed=7).read_bytes()
     b = _run(_DISPUTES, "tvist", seed=7).read_bytes()
+    assert a == b
+
+
+# ---------------------------------------------------------------------------
+# Tvist region negotiation — the regime is chosen ahead of the transaction
+# ---------------------------------------------------------------------------
+
+
+def test_region_tvist_passes_all_validators() -> None:
+    """Under ``payments: tvist`` a region is negotiated and adhered to throughout."""
+    results = _results(_run(_REGION, "tvist"), "tvist_region")
+    assert results, "no validators ran"
+    assert all(results.values()), f"unexpected failures: {results}"
+
+
+def test_region_baseline_settles_ungoverned_and_breaks_regime() -> None:
+    """``prepaid_credits`` cannot negotiate or enforce a regime, so both checks fail."""
+    results = _results(_run(_REGION, "prepaid_credits"), "tvist_region")
+    assert results["tvist_region_agreed"] is False
+    assert results["tvist_region_adherence"] is False
+    assert results["tvist_conservation"] is True
+
+
+def test_region_deterministic() -> None:
+    """Same seed → byte-identical region trace."""
+    a = _run(_REGION, "tvist", seed=99).read_bytes()
+    b = _run(_REGION, "tvist", seed=99).read_bytes()
     assert a == b

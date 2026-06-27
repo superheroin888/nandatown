@@ -100,6 +100,158 @@ ConditionType = Literal["delivery_proof", "time_elapsed", "attestation"]
 EscrowStatus = Literal["PENDING_FUNDING", "FUNDED", "RELEASED", "CONTESTED", "REFUNDED"]
 
 
+@dataclass(frozen=True)
+class DisputeRegime:
+    """The governing dispute rules of one payment region / jurisdiction.
+
+    A transaction is bound to a regime *before* it settles (see
+    :meth:`TvistPayments.negotiate_region`), and every later dispute, recall, or
+    escrow on it must adhere to that regime:
+
+    * ``irrevocable`` — is the region's A2A rail settlement-final.
+    * ``recall_allowed`` — may a settled payment be recalled at all (FedNow has no
+      federal recall standard yet, so its recall is *disallowed* — escrow is the
+      only protection there).
+    * ``recall_window_ticks`` — how long a recall stays open (Pix MED 2.0's 11-day
+      recovery SLA, SCT Inst's recall window); ``0`` means no time limit.
+    * ``reason_codes`` — the dispute / recall taxonomy the region accepts.
+    * ``requires_delivery_for_escrow`` — whether escrow must gate on a
+      delivery / attestation proof rather than a bare timer.
+
+    Example::
+
+        regime = REGIONS["br_pix"]
+        assert regime.recall_allowed and regime.recall_window_ticks == 11
+    """
+
+    region: str
+    label: str
+    rail: str
+    irrevocable: bool
+    recall_allowed: bool
+    recall_window_ticks: int
+    reason_codes: frozenset[str]
+    requires_delivery_for_escrow: bool
+
+
+# The region whose rules govern a transaction when none is negotiated. It is
+# deliberately permissive (everything allowed, no window) so an un-regioned call
+# behaves like a plain ledger — regional enforcement is opt-in via negotiation.
+DEFAULT_REGION = "global"
+
+# Built-in regions — not just the Nordics. Each maps a real A2A rail to its
+# operative dispute regime. Clients and agents negotiate which one governs a
+# transaction up front (:meth:`TvistPayments.negotiate_region`).
+REGIONS: dict[str, DisputeRegime] = {
+    "global": DisputeRegime(
+        region="global",
+        label="Ungoverned (permissive default)",
+        rail="generic",
+        irrevocable=True,
+        recall_allowed=True,
+        recall_window_ticks=0,
+        reason_codes=REASON_CODES,
+        requires_delivery_for_escrow=False,
+    ),
+    "eu_sepa": DisputeRegime(
+        region="eu_sepa",
+        label="EU — SEPA Instant (SCT Inst recall)",
+        rail="sepa_instant",
+        irrevocable=True,
+        recall_allowed=True,
+        recall_window_ticks=10,
+        reason_codes=frozenset(
+            {
+                "sepa_recall",
+                "verifiable_intent_mismatch",
+                "agent_exceeded_mandate",
+                "fraud",
+                "not_as_described",
+            }
+        ),
+        requires_delivery_for_escrow=True,
+    ),
+    "br_pix": DisputeRegime(
+        region="br_pix",
+        label="Brazil — Pix (MED 2.0, 11-day recovery)",
+        rail="pix",
+        irrevocable=True,
+        recall_allowed=True,
+        recall_window_ticks=11,
+        reason_codes=frozenset(
+            {
+                "pix_med_return",
+                "verifiable_intent_mismatch",
+                "agent_exceeded_mandate",
+                "fraud",
+            }
+        ),
+        requires_delivery_for_escrow=True,
+    ),
+    "us_fednow": DisputeRegime(
+        region="us_fednow",
+        label="US — FedNow (no federal recall standard)",
+        rail="fednow",
+        irrevocable=True,
+        recall_allowed=False,
+        recall_window_ticks=0,
+        reason_codes=frozenset({"agent_exceeded_mandate", "verifiable_intent_mismatch"}),
+        requires_delivery_for_escrow=True,
+    ),
+    "in_upi": DisputeRegime(
+        region="in_upi",
+        label="India — UPI (NPCI dispute flows)",
+        rail="upi",
+        irrevocable=True,
+        recall_allowed=True,
+        recall_window_ticks=7,
+        reason_codes=frozenset(
+            {
+                "fraud",
+                "goods_not_received",
+                "verifiable_intent_mismatch",
+                "agent_exceeded_mandate",
+            }
+        ),
+        requires_delivery_for_escrow=True,
+    ),
+    "uk_fps": DisputeRegime(
+        region="uk_fps",
+        label="UK — Faster Payments (APP reimbursement)",
+        rail="fps",
+        irrevocable=True,
+        recall_allowed=True,
+        recall_window_ticks=5,
+        reason_codes=frozenset(
+            {
+                "fraud",
+                "goods_not_received",
+                "not_as_described",
+                "agent_exceeded_mandate",
+            }
+        ),
+        requires_delivery_for_escrow=True,
+    ),
+    "nordic": DisputeRegime(
+        region="nordic",
+        label="Nordics — Klarna / BNPL / Swish",
+        rail="bnpl",
+        irrevocable=False,
+        recall_allowed=True,
+        recall_window_ticks=0,
+        reason_codes=frozenset(
+            {
+                "goods_not_received",
+                "not_as_described",
+                "fraud",
+                "recurring_disputed",
+            }
+        ),
+        requires_delivery_for_escrow=False,
+    ),
+}
+
+
 def content_hash(artifact: dict[str, Any]) -> str:
     """Return the ``sha256`` content address of an evidence artifact.
 
@@ -156,6 +308,7 @@ class TvistEscrow:
     rail: str
     status: EscrowStatus = "PENDING_FUNDING"
     intent_ref: str | None = None
+    region: str = DEFAULT_REGION
 
 
 @dataclass
@@ -180,6 +333,7 @@ class TvistCase:
     win_probability: float = 0.0
     outcome: Literal["open", "represented", "refunded", "rejected"] = "open"
     merchant_won: bool = False
+    region: str = DEFAULT_REGION
 
 
 @dataclass
@@ -263,6 +417,44 @@ class TvistPayments:
         """
         held = sum(e.amount for e in self._escrows.values() if e.status in ("FUNDED", "CONTESTED"))
         return sum(self._balances.values()) + held
+
+    # -- region selection (negotiated ahead of the transaction) -----------
+
+    @staticmethod
+    def negotiate_region(
+        client_options: list[str],
+        agent_options: list[str],
+    ) -> str | None:
+        """Agree the governing region from a client's and an agent's option lists.
+
+        Both sides bring an ordered list of regions whose dispute rules they are
+        willing to adhere to; the agreed region is the **client's highest
+        preference that the agent also accepts** (and that is a known region). If
+        the two option sets do not overlap there is no agreement and the caller
+        must not transact — ``None`` is returned.
+
+        This is the "choose a region ahead of the transaction" primitive: the
+        regime is fixed by mutual consent before any funds move.
+
+        Example::
+
+            r = TvistPayments.negotiate_region(["br_pix", "eu_sepa"], ["eu_sepa"])
+            assert r == "eu_sepa"
+        """
+        agent_set = set(agent_options)
+        for region in client_options:
+            if region in agent_set and region in REGIONS:
+                return region
+        return None
+
+    def regime(self, region: str) -> DisputeRegime:
+        """Return the :class:`DisputeRegime` for ``region`` (or the permissive default).
+
+        Example::
+
+            assert not pay.regime("us_fednow").recall_allowed
+        """
+        return REGIONS.get(region, REGIONS[DEFAULT_REGION])
 
     def _credit(self, agent: AgentId, amount: int) -> None:
         self._balances[agent] = self._balances.get(agent, 0) + amount
@@ -379,8 +571,13 @@ class TvistPayments:
         payment_ref: PaymentRef,
         reason_code: str,
         disputant: AgentId,
+        region: str = DEFAULT_REGION,
     ) -> TvistCase:
-        """Open a dispute case against a settled payment.
+        """Open a dispute case against a settled payment, under a region's regime.
+
+        The ``reason_code`` must belong to the governing region's taxonomy — a
+        Pix ``pix_med_return`` filed under an ``eu_sepa`` agreement is rejected,
+        because the parties agreed to adhere to SEPA's rules ahead of time.
 
         Example::
 
@@ -389,8 +586,8 @@ class TvistPayments:
         if payment_ref not in self._payments:
             msg = f"Cannot dispute unknown payment: {payment_ref}"
             raise ValueError(msg)
-        if reason_code not in REASON_CODES:
-            msg = f"Unknown reason code: {reason_code}"
+        if reason_code not in self.regime(region).reason_codes:
+            msg = f"Reason code {reason_code!r} not accepted in region {region!r}"
             raise ValueError(msg)
         case_id = f"case-{payment_ref}"
         case = TvistCase(
@@ -398,6 +595,7 @@ class TvistPayments:
             payment_ref=payment_ref,
             reason_code=reason_code,
             disputant=disputant,
+            region=region,
         )
         self._cases[case_id] = case
         return case
@@ -495,19 +693,23 @@ class TvistPayments:
         ref: PaymentRef,
         rail: str = "pix",
         intent_ref: str | None = None,
+        region: str = DEFAULT_REGION,
+        at_tick: float = 0.0,
     ) -> Receipt:
-        """Settle an irrevocable push payment, enforcing mandate if intent-bound.
+        """Settle a push payment under a region's regime, enforcing mandate if bound.
 
-        Marks the payment ``irrevocable`` so :meth:`refund` refuses it — the only
-        sanctioned reversal is :meth:`recall_a2a` citing an intent mismatch. If
-        ``intent_ref`` is supplied and the mandate does **not** cover the payment,
-        the settlement is rejected outright (the over-mandate agent is stopped
-        before funds move).
+        The region (agreed ahead of time) decides whether the rail is
+        ``irrevocable`` — a Nordic BNPL settlement is reversible, a Pix / SEPA /
+        FedNow one is not. An irrevocable payment marks itself so :meth:`refund`
+        refuses it; the only sanctioned reversal is :meth:`recall_a2a`, and only
+        as the region's regime permits. If ``intent_ref`` is supplied and the
+        mandate does **not** cover the payment, the settlement is rejected outright
+        (the over-mandate agent is stopped before funds move).
 
         Example::
 
             r = await pay.settle_a2a(AgentId("payee"), Money(amount=100),
-                                     PaymentRef("a1"), rail="sepa_instant")
+                                     PaymentRef("a1"), region="eu_sepa")
         """
         if amount.amount <= 0:
             msg = f"Payment amount must be positive: {amount.amount}"
@@ -522,26 +724,46 @@ class TvistPayments:
         self._credit(to, amount.amount)
         receipt = Receipt(ref=ref, payer=self._agent_id, payee=to, amount=amount)
         self._payments[ref] = receipt
-        self._settled_meta[ref] = {"rail": rail, "irrevocable": True, "intent_ref": intent_ref}
+        self._settled_meta[ref] = {
+            "rail": rail,
+            "irrevocable": self.regime(region).irrevocable,
+            "intent_ref": intent_ref,
+            "region": region,
+            "at_tick": at_tick,
+        }
         return receipt
 
-    def recall_a2a(self, ref: PaymentRef, intent_ref: str) -> bool:
-        """Reverse an irrevocable A2A payment **only** on a Verifiable-Intent mismatch.
+    def recall_a2a(self, ref: PaymentRef, intent_ref: str, current_tick: float = 0.0) -> bool:
+        """Reverse a settled A2A payment, adhering to its agreed region's regime.
 
-        The recall succeeds iff the cited intent record exists and does *not* cover
-        the settled payment (the agent exceeded its mandate). A recall with no
-        mismatch — the unilateral clawback a fraudster wants — is refused and
-        returns ``False`` without moving funds. This is the irrevocability gate.
+        The recall succeeds iff **all** of the region's rules are met:
+
+        * the region permits recall at all (FedNow does not — there it always
+          fails, and escrow is the only protection),
+        * the recall is inside the region's window (Pix MED 2.0's 11 ticks, SCT
+          Inst's 10), and
+        * the cited intent record does *not* cover the settled payment (the agent
+          exceeded its mandate).
+
+        A recall with no mismatch — the unilateral clawback a fraudster wants — is
+        refused, as is any recall a region disallows or that arrives too late.
+        Returns ``False`` without moving funds in every refused case.
 
         Example::
 
-            reversed_ = pay.recall_a2a(PaymentRef("a1"), "i1")
+            reversed_ = pay.recall_a2a(PaymentRef("a1"), "i1", current_tick=3.0)
         """
         receipt = self._payments.get(ref)
         if receipt is None:
             return False
         meta = self._settled_meta.setdefault(ref, {})
         if meta.get("reversed"):
+            return False
+        regime = self.regime(str(meta.get("region", DEFAULT_REGION)))
+        if not regime.recall_allowed:
+            return False
+        window = regime.recall_window_ticks
+        if window > 0 and current_tick - float(meta.get("at_tick", 0.0)) > window:
             return False
         if self.intent_covers(intent_ref, receipt.amount.amount, receipt.payee):
             return False
@@ -561,8 +783,13 @@ class TvistPayments:
         condition: ReleaseCondition,
         rail: str = "pix",
         intent_ref: str | None = None,
+        region: str = DEFAULT_REGION,
     ) -> TvistEscrow:
         """Open an escrow in ``PENDING_FUNDING``; no funds move until funded.
+
+        A region that requires delivery-grade protection (every irrevocable A2A
+        rail does) rejects a bare ``time_elapsed`` auto-release — escrow there must
+        gate on a delivery or attestation proof.
 
         Example::
 
@@ -574,6 +801,9 @@ class TvistPayments:
         if escrow_id in self._escrows:
             msg = f"Duplicate escrow id: {escrow_id}"
             raise ValueError(msg)
+        if self.regime(region).requires_delivery_for_escrow and condition.type == "time_elapsed":
+            msg = f"Region {region!r} requires a delivery/attestation condition for escrow"
+            raise ValueError(msg)
         esc = TvistEscrow(
             escrow_id=escrow_id,
             payer=payer,
@@ -582,6 +812,7 @@ class TvistPayments:
             condition=condition,
             rail=rail,
             intent_ref=intent_ref,
+            region=region,
         )
         self._escrows[escrow_id] = esc
         return esc

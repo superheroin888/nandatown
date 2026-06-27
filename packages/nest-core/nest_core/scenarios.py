@@ -105,3 +105,7 @@ def _try_load_builtin(name: str) -> None:
         from nest_core.scenarios_builtin.tvist_escrow import tvist_escrow_factory
 
         register_scenario("tvist_escrow", tvist_escrow_factory)
+    elif name == "tvist_region":
+        from nest_core.scenarios_builtin.tvist_region import tvist_region_factory
+
+        register_scenario("tvist_region", tvist_region_factory)

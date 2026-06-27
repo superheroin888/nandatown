@@ -756,6 +756,7 @@ class TestValidatorRegistry:
             "receipt_reputation",
             "tvist_disputes",
             "tvist_escrow",
+            "tvist_region",
         }
         assert set(VALIDATORS.keys()) == expected
 

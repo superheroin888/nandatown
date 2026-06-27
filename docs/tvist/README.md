@@ -6,11 +6,20 @@
 > nobody built across the seven agent-payment protocols and the now-mandatory
 > irrevocable rails (Pix, SEPA Instant, FedNow).
 
+> **Base feature → the region is chosen and negotiated *ahead* of the
+> transaction.** Client and agent each bring an ordered list of regions whose
+> dispute rules they accept — Pix, SEPA Instant, FedNow, UPI, UK FPS, Nordic
+> (not just the Nordics) — and agree one to adhere to before any funds move. The
+> transaction is then bound to that regime, and every later recall and dispute
+> must obey it. Escrow and dispute deflection are both layered on top of this
+> governing-region primitive.
+
 > **Scope.** Built into **one** Nanda Town layer — `payments` — and nothing
-> else. It's a drop-in for the stock `Payments` protocol; the dispute / escrow /
-> intent surface is purely additive. Two scenarios: `tvist_escrow` (the
-> agentic-commerce headline) and `tvist_disputes` (the shared dispute
-> foundation), each with its own adversarial gates.
+> else. It's a drop-in for the stock `Payments` protocol; the region / dispute /
+> escrow / intent surface is purely additive. Three scenarios: `tvist_region`
+> (the governing-region base feature), `tvist_escrow` (the agentic-commerce
+> headline), and `tvist_disputes` (the dispute foundation), each with its own
+> adversarial gates.
 
 This is the layer-by-layer build that backs the pitch: it maps the Tvist
 product spec onto the `payments` layer and shows the build step by step and how
@@ -28,7 +37,7 @@ refund`). We build there and nowhere else.
 
 | Built into | What this submission ships |
 |---|---|
-| **`payments`** (the only layer touched) | `TvistPayments` plugin (`("payments","tvist")`) — programmable escrow, cross-protocol intent vault, irrevocable A2A recall, and evidence-gated dispute resolution |
+| **`payments`** (the only layer touched) | `TvistPayments` plugin (`("payments","tvist")`) — a negotiated governing-region regime, programmable escrow, cross-protocol intent vault, irrevocable A2A recall, and evidence-gated dispute resolution |
 
 Everything is additive on top of the stock `Payments` protocol — the plugin is
 a drop-in, so any scenario can adopt it by flipping one line of YAML. The
@@ -38,7 +47,40 @@ implementations — keeping the submission a single, clean wedge.
 
 ---
 
-## 1. The pitch — Tvist 2.0 → `tvist_escrow` (A2A · escrow · agentic commerce)
+## 1. Base feature — region chosen & negotiated ahead of the transaction → `tvist_region`
+
+**Why.** A dispute means nothing without a jurisdiction. Pix gives an 11-day
+recovery SLA; SEPA Instant a 10-second-final recall window; FedNow *no* recall
+standard at all; the Nordics a reversible BNPL chargeback. So before a
+transaction, the **client and the agent negotiate which region's regime
+governs it** — from a menu of options, not a hard-coded Nordic default — and the
+transaction is bound to that regime for the rest of its life.
+
+**Nanda Town port.**
+
+- **Plugin:** `DisputeRegime` + a `REGIONS` registry (Pix, SEPA, FedNow, UPI, UK
+  FPS, Nordic, plus a permissive `global` default). `negotiate_region(client_opts,
+  agent_opts)` returns the client's highest preference the agent also accepts, or
+  `None` (no deal → don't transact). The agreed region is threaded into
+  `settle_a2a` (its regime decides irrevocability), `recall_a2a` (recall allowed?
+  inside the window?), `open_dispute` (reason code in the region's taxonomy?), and
+  `open_escrow` (does the region demand a delivery condition?).
+- **Scenario:** [`scenarios/tvist_region.yaml`](../../scenarios/tvist_region.yaml)
+  — flows that *agree* a region (Pix recall honoured), pick a *no-recall* region
+  (FedNow clawback refused), *fail to overlap* (no transaction), and file an
+  *off-taxonomy* reason (rejected) vs an in-taxonomy one (accepted).
+- **Adversarial validators:** `tvist_region_agreed` (every settlement was under a
+  mutually-agreed region) and `tvist_region_adherence` (no recall in a no-recall
+  region, no dispute reason outside the agreed taxonomy).
+
+**The discrimination.** Under `payments: tvist` a region is negotiated and every
+flow obeys it → **PASS**. Under `payments: prepaid_credits` there is no
+negotiation and no regime: every flow settles ungoverned, the FedNow clawback
+reverses, and the off-taxonomy reason is accepted → both validators **FAIL**.
+
+---
+
+## 2. The pitch — Tvist 2.0 → `tvist_escrow` (A2A · escrow · agentic commerce)
 
 **Product spec (v2.0, §3–§4).** Push payments (Pix MED 2.0, SEPA Instant) are
 irrevocable; the only sanctioned reversal cites a Verifiable-Intent mismatch
@@ -71,7 +113,7 @@ reference plugin would fail.*
 
 ---
 
-## 2. Foundation — Tvist 1.0 → `tvist_disputes` (the core v2 extends)
+## 3. Foundation — Tvist 1.0 → `tvist_disputes` (the core v2 extends)
 
 **Product spec (v0.1, §5.2).** A Klarna/card dispute fires; the Evidence Agent
 pulls delivery proof; a win-probability model scores it; above the auto-fight
@@ -97,24 +139,26 @@ irrevocable rails.
 
 ---
 
-## 3. Build steps (what landed, in order)
+## 4. Build steps (what landed, in order)
 
 1. **Plugin** —
    [`payments/tvist.py`](../../packages/nest-plugins-reference/nest_plugins_reference/payments/tvist.py):
-   `TvistPayments` + `ReleaseCondition`, `TvistEscrow`, `TvistCase`,
-   `IntentRecord`, `content_hash`. Registered in
+   `TvistPayments` + `DisputeRegime` / `REGIONS` / `negotiate_region`,
+   `ReleaseCondition`, `TvistEscrow`, `TvistCase`, `IntentRecord`,
+   `content_hash`. Registered in
    [`plugins.py`](../../packages/nest-core/nest_core/plugins.py).
 2. **Scenarios** —
-   [`tvist_escrow.py`](../../packages/nest-core/nest_core/scenarios_builtin/tvist_escrow.py)
+   [`tvist_region.py`](../../packages/nest-core/nest_core/scenarios_builtin/tvist_region.py),
+   [`tvist_escrow.py`](../../packages/nest-core/nest_core/scenarios_builtin/tvist_escrow.py),
    and
    [`tvist_disputes.py`](../../packages/nest-core/nest_core/scenarios_builtin/tvist_disputes.py),
    registered in [`scenarios.py`](../../packages/nest-core/nest_core/scenarios.py).
    A single orchestrator owns the plugin and drives the flows (the
    `receipt_reputation` auditor pattern), emitting a `tvist:` trace-line
    protocol.
-3. **Validators** — six adversarial checks added to
+3. **Validators** — eight adversarial checks added to
    [`validators.py`](../../packages/nest-core/nest_core/validators.py) and
-   registered under `tvist_escrow` / `tvist_disputes`.
+   registered under `tvist_region` / `tvist_escrow` / `tvist_disputes`.
 4. **Tests** — plugin unit + property tests
    ([`test_tvist_payments.py`](../../packages/nest-plugins-reference/tests/test_tvist_payments.py))
    and end-to-end discrimination + determinism tests
@@ -123,17 +167,21 @@ irrevocable rails.
    [problem brief](../hackathon/problems/12-payments-tvist-escrow-agentic-commerce.md),
    the [pitch](PITCH.md), and this walkthrough.
 
-Determinism is preserved throughout: win-probabilities are a fixed function of
-cited evidence, evidence identity is `sha256`, no wall-clock, no RNG in the
-plugin. `uv run ruff check . && ruff format --check . && pyright && pytest` all
-pass.
+Determinism is preserved throughout: the region regime and win-probabilities are
+fixed functions of their inputs, evidence identity is `sha256`, no wall-clock, no
+RNG in the plugin. `uv run ruff check . && ruff format --check . && pyright &&
+pytest` all pass.
 
 ---
 
-## 4. Run it
+## 5. Run it
 
 ```bash
 pip install -e packages/nest-core -e packages/nest-sdk -e packages/nest-plugins-reference -e packages/nest-cli
+
+# Base feature — region negotiated ahead of the transaction (all validators PASS)
+nest run scenarios/tvist_region.yaml -o ./traces/tvist_region.jsonl
+python -c "from pathlib import Path; from nest_core.validators import validate_trace; [print(('PASS' if r.passed else 'FAIL'), r.name, '-', r.detail) for r in validate_trace(Path('traces/tvist_region.jsonl'),'tvist_region')]"
 
 # Tvist 2.0 — irrevocable A2A + escrow + intent vault (all validators PASS)
 nest run scenarios/tvist_escrow.yaml -o ./traces/tvist_escrow.jsonl
@@ -144,13 +192,13 @@ nest run scenarios/tvist_disputes.yaml -o ./traces/tvist_disputes.jsonl
 python -c "from pathlib import Path; from nest_core.validators import validate_trace; [print(('PASS' if r.passed else 'FAIL'), r.name, '-', r.detail) for r in validate_trace(Path('traces/tvist_disputes.jsonl'),'tvist_disputes')]"
 ```
 
-To watch the attacks land, edit either YAML and change `payments: tvist` to
+To watch the attacks land, edit any YAML and change `payments: tvist` to
 `payments: prepaid_credits`, re-run, and re-validate: the adversarial validators
 flip to FAIL while conservation still holds — the precise leaks the gates close.
 
 ---
 
-## 5. Six-dimension self-assessment (judging rubric)
+## 6. Six-dimension self-assessment (judging rubric)
 
 - **Correctness** — funds conserved (property test under a 200-op random
   sequence); deterministic traces (byte-identical re-run tests).
