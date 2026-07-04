@@ -62,6 +62,19 @@ def test_readme_md_download(client: TestClient) -> None:
     assert "SKILL.md" in r.text
 
 
+def test_cors_open_for_browser_agents(client: TestClient) -> None:
+    # The playground (and any browser-based agent framework) calls cross-origin.
+    r = client.get("/regions", headers={"origin": "https://example.com"})
+    assert r.headers.get("access-control-allow-origin") == "*"
+
+
+def test_homepage_has_playground_and_dual_use(client: TestClient) -> None:
+    html = client.get("/", headers={"accept": "text/html"}).text
+    assert "Dual-use by design" in html
+    assert 'id="try"' in html          # live playground section
+    assert "runFlow()" in html         # real fetch-driven buttons
+
+
 def test_openapi_served(client: TestClient) -> None:
     spec = client.get("/openapi.json").json()
     assert "/regions/recommend" in spec["paths"]

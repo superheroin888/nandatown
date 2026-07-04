@@ -95,14 +95,15 @@ footer{padding:40px 0;color:var(--mut);font-size:13.5px}
   <a class="item" href="#personas">Personas</a>
   <a class="item" href="#usecases">Use cases</a>
   <a class="item" href="#api">API</a>
+  <a class="item" href="#try">Try live</a>
   <a class="item" href="#downloads">Downloads</a>
-  <a class="cta" href="/docs">Try the API</a>
+  <a class="cta" href="#try">Test the API</a>
 </div></nav>
 
 <!-- HERO -->
 <section>
   <div class="wrap">
-    <span class="pill"><span class="dot"></span> Live sandbox · no auth · notional credits</span>
+    <span class="pill"><span class="dot"></span> Live sandbox · no auth · notional credits · <b style="color:var(--teal)">dual-use: humans &amp; agents</b></span>
     <h1>The <span class="grad">settlement-trust layer</span><br>for agentic commerce.</h1>
     <p class="sub" style="margin-top:18px;font-size:18px">
       AI agents are starting to move money on people's behalf — over instant rails that are
@@ -111,9 +112,30 @@ footer{padding:40px 0;color:var(--mut);font-size:13.5px}
       until delivery, recalls only on proof.
     </p>
     <div class="btnrow">
-      <a class="btn solid" href="/skill.md">⤓ SKILL.md — for agents</a>
+      <a class="btn solid" href="#try">▶ Test the API live</a>
+      <a class="btn" href="/skill.md">⤓ SKILL.md — for agents</a>
       <a class="btn" href="/docs">Interactive docs</a>
       <a class="btn" href="/openapi.json">OpenAPI spec</a>
+    </div>
+
+    <div class="card" style="margin-top:30px">
+      <span class="tag i">Dual-use by design</span>
+      <h3>One URL. Two audiences. Same contract.</h3>
+      <p style="color:var(--mut);font-size:14px;margin-top:6px">
+        This site is served by the API itself via content negotiation on <code>GET /</code>:
+        a <b>browser</b> (Accept: text/html) gets this page — a <b>agent or curl</b>
+        (Accept: */*) gets the machine-readable JSON endpoint index. Humans read the sections
+        below and click the playground; agents read <a href="/skill.md">SKILL.md</a> +
+        <a href="/openapi.json">OpenAPI</a> and drive the exact same endpoints. Nothing is
+        mocked — the playground buttons hit the live API you'd curl.
+      </p>
+      <div class="grid g2" style="margin-top:14px">
+        <pre style="margin:0"><span class="c"># humans (browser)</span>
+open <span class="g">this URL</span> → animated homepage + live playground</pre>
+        <pre style="margin:0"><span class="c"># agents (same URL)</span>
+curl -s <span class="g">this URL</span>/          <span class="c"># JSON endpoint index</span>
+curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full agent contract</span></pre>
+      </div>
     </div>
     <div class="metrics">
       <div class="metric"><div class="n" data-count="22">0</div><div class="l">jurisdictions · 6 continents</div></div>
@@ -388,6 +410,48 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
   </div>
 </section>
 
+<!-- LIVE PLAYGROUND -->
+<section id="try">
+  <div class="wrap reveal">
+    <div class="kicker">Try it — live, in this page</div>
+    <h2>Test the API without leaving the browser</h2>
+    <p class="sub">Every button below fires a real <code>fetch</code> at this API — the same
+    endpoints an agent curls from SKILL.md. Green = the happy path succeeds; red = the gate
+    correctly refuses an attack. Run them in any order; IDs are auto-uniqued so you can
+    repeat forever.</p>
+
+    <div class="grid g2" style="margin-top:26px">
+      <div class="card">
+        <span class="tag t">Happy path</span>
+        <h3>▶ Full escrowed booking (5 calls)</h3>
+        <p>recommend → consent → escrow → deliver → release. The payee is paid only after
+        the delivery proof lands.</p>
+        <div class="btnrow"><button class="btn solid" onclick="runFlow()">Run the flow</button></div>
+      </div>
+      <div class="card">
+        <span class="tag c">Attacks — expect refusals</span>
+        <h3>⛔ Fire an attack at each gate</h3>
+        <p>Each returns an error or a refusal — proof the gates hold on the live service.</p>
+        <div class="btnrow">
+          <button class="btn" onclick="atkConsent()">Over-consent pay</button>
+          <button class="btn" onclick="atkEscrow()">Drain escrow</button>
+          <button class="btn" onclick="atkFednow()">FedNow recall</button>
+          <button class="btn" onclick="atkClawback()">Unjust clawback</button>
+          <button class="btn" onclick="atkReason()">Wrong-region dispute</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <h3 style="flex:1">Console — live requests &amp; responses</h3>
+        <button class="btn" style="padding:6px 12px;font-size:13px" onclick="clearCon()">Clear</button>
+      </div>
+      <pre id="console" style="min-height:150px;max-height:340px;overflow-y:auto;margin:0"><span class="c"># click a button above — requests and live responses appear here…</span></pre>
+    </div>
+  </div>
+</section>
+
 <!-- DOWNLOADS -->
 <section id="downloads">
   <div class="wrap reveal">
@@ -431,6 +495,80 @@ const io = new IntersectionObserver(es => es.forEach(e => {
   });
 }), {threshold:.18});
 document.querySelectorAll('.reveal, .metrics, .metric').forEach(el => io.observe(el));
+
+// ---- live API playground: real fetches against this same origin -----------
+const con = document.getElementById('console');
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function logReq(m, p, body){
+  con.innerHTML += `\n<span class="y">→ ${m} ${esc(p)}</span>` +
+    (body ? ` <span class="c">${esc(JSON.stringify(body))}</span>` : '');
+  con.scrollTop = con.scrollHeight;
+}
+function logRes(status, data, good){
+  const cls = good ? 'g' : 'r';
+  con.innerHTML += `\n<span class="${cls}">← ${status} ${esc(JSON.stringify(data))}</span>\n`;
+  con.scrollTop = con.scrollHeight;
+}
+async function call(m, p, body, expectFail){
+  logReq(m, p, body);
+  try{
+    const r = await fetch(p, {method:m, headers:{'content-type':'application/json'},
+      body: body ? JSON.stringify(body) : undefined});
+    const data = await r.json();
+    const refused = !r.ok || data.reversed === false || data.accepted === false || data.agreed_region === null;
+    logRes(r.status, data, expectFail ? refused : r.ok && !refused);
+    return data;
+  }catch(e){ logRes('ERR', String(e), false); }
+}
+function clearCon(){ con.innerHTML = '<span class="c"># cleared — fire away…</span>'; }
+const uid = () => Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-4);
+
+async function runFlow(){
+  const id = uid();
+  con.innerHTML += `\n<span class="c"># ── HAPPY PATH · run ${id} ──</span>`;
+  await call('POST','/regions/recommend',{client_prefs:['in_upi'],agent_prefs:['in_upi']});
+  await call('POST','/consent',{consent_id:'c-'+id,principal:'human-'+id,budget:500});
+  await call('POST','/escrow',{escrow_id:'e-'+id,payer:'human-'+id,payee:'airline-'+id,
+    amount:450,region:'in_upi',condition_expected:'ticket_issued'});
+  await call('POST',`/escrow/e-${id}/deliver`,{proof:'ticket_issued'});
+  await call('POST',`/escrow/e-${id}/release`);
+  con.innerHTML += `\n<span class="g"># ✓ payee paid only after delivery — flow complete</span>\n`;
+  con.scrollTop = con.scrollHeight;
+}
+async function atkConsent(){
+  const id = uid();
+  con.innerHTML += `\n<span class="c"># ── ATTACK · charge 900 against a 500 consent ──</span>`;
+  await call('POST','/consent',{consent_id:'c-'+id,principal:'human-'+id,budget:500});
+  await call('POST','/pay',{ref:'p-'+id,from_account:'human-'+id,to_account:'shop',
+    amount:900,region:'in_upi',consent_id:'c-'+id}, true);
+}
+async function atkEscrow(){
+  const id = uid();
+  con.innerHTML += `\n<span class="c"># ── ATTACK · release escrow without delivering ──</span>`;
+  await call('POST','/escrow',{escrow_id:'e-'+id,payer:'human-'+id,payee:'ghost',
+    amount:200,region:'br_pix',condition_expected:'delivered'});
+  await call('POST',`/escrow/e-${id}/release`, null, true);
+}
+async function atkFednow(){
+  const id = uid();
+  con.innerHTML += `\n<span class="c"># ── ATTACK · recall on FedNow (regime forbids recall) ──</span>`;
+  await call('POST','/pay',{ref:'f-'+id,from_account:'bob-'+id,to_account:'scam',
+    amount:300,region:'us_fednow'});
+  await call('POST','/consent',{consent_id:'cb-'+id,principal:'bob-'+id,budget:100});
+  await call('POST','/recall',{ref:'f-'+id,consent_id:'cb-'+id}, true);
+}
+async function atkClawback(){
+  const id = uid();
+  con.innerHTML += `\n<span class="c"># ── ATTACK · claw back a legitimate in-mandate payment ──</span>`;
+  await call('POST','/consent',{consent_id:'ok-'+id,principal:'bob-'+id,budget:500});
+  await call('POST','/pay',{ref:'u-'+id,from_account:'bob-'+id,to_account:'shop',
+    amount:300,region:'in_upi',consent_id:'ok-'+id});
+  await call('POST','/recall',{ref:'u-'+id,consent_id:'ok-'+id}, true);
+}
+async function atkReason(){
+  con.innerHTML += `\n<span class="c"># ── ATTACK · Pix reason code under the UPI regime ──</span>`;
+  await call('POST','/dispute',{ref:'d-'+uid(),region:'in_upi',reason_code:'pix_med_return'}, true);
+}
 </script>
 </body>
 </html>

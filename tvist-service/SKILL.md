@@ -19,6 +19,11 @@ dispute under valid reason codes.
 > created automatically at 100000 credits on first use. No auth, no keys, no
 > signup — just call it.
 
+> Dual-use: the same base URL serves **humans and agents**. A browser opening
+> `/` gets an animated homepage with a live API playground; an agent (or curl)
+> gets the JSON endpoint index — the contract below is unchanged either way.
+> CORS is open (`*`), so browser-based agent frameworks can call it too.
+
 ## Base URL
 
 ```

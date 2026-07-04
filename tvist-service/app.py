@@ -210,8 +210,21 @@ app = FastAPI(
     version="1.0.0",
     description=(
         "Escrow, consent, and dispute service for AI agents transacting on "
-        "irrevocable rails. Notional credits only — a sandbox, not a bank."
+        "irrevocable rails. Notional credits only — a sandbox, not a bank. "
+        "Dual-use: the same URL serves humans (HTML homepage, /docs) and "
+        "agents (JSON index at /, /openapi.json, /skill.md)."
     ),
+)
+
+# Open CORS: the sandbox is meant to be testable from anywhere — the homepage's
+# live playground, agent frameworks in browsers, or third-party tools.
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
