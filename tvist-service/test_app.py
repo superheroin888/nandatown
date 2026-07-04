@@ -89,6 +89,27 @@ def test_homepage_fully_wired_to_endpoints(client: TestClient) -> None:
     assert "stepRecommend" in html             # clickable flow-chart nodes
 
 
+def test_homepage_navigation_is_wired(client: TestClient) -> None:
+    """Menus are linked and clickable: scrollspy, mobile burger, footer nav, top link."""
+    html = client.get("/", headers={"accept": "text/html"}).text
+    # sticky nav: clickable logo -> #top anchor, menu container, burger toggle
+    assert 'id="top"' in html
+    assert 'class="logo" href="#top"' in html
+    assert 'id="menu"' in html
+    assert "toggleMenu()" in html
+    # every nav item points at a real section id on the page
+    for sec in ("pain", "arch", "components", "personas", "usecases", "api", "try", "downloads"):
+        assert f'href="#{sec}"' in html
+        assert f'id="{sec}"' in html
+    # scrollspy + back-to-top logic present
+    assert "scrollspy" in html or "spy()" in html
+    assert 'id="totop"' in html
+    # structured footer menu with live-endpoint + deliverable links
+    assert 'class="fcols"' in html
+    for link in ("/health", "/stats", "/regions", "/skill.md", "/readme.md", "/openapi.json"):
+        assert link in html
+
+
 def test_stats_endpoint(client: TestClient) -> None:
     s = client.get("/stats").json()
     assert s["regions"] == 22

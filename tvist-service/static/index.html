@@ -20,14 +20,33 @@ a:hover{text-decoration:underline}
 button{font:inherit;cursor:pointer}
 .wrap{max-width:1060px;margin:0 auto;padding:0 22px}
 nav{position:sticky;top:0;z-index:50;background:rgba(11,16,32,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-nav .wrap{display:flex;align-items:center;gap:22px;height:56px}
+nav .wrap{display:flex;align-items:center;gap:18px;height:56px}
 nav .logo{font-weight:700;font-size:18px;color:var(--txt)}
+nav .logo:hover{text-decoration:none;filter:brightness(1.2)}
 nav .logo b{color:var(--teal)}
-nav a.item{color:var(--mut);font-size:14px}
+nav .menu{display:flex;align-items:center;gap:18px}
+nav a.item{color:var(--mut);font-size:14px;padding:4px 2px;border-bottom:2px solid transparent}
 nav a.item:hover{color:var(--txt);text-decoration:none}
-nav .cta{margin-left:auto;background:var(--teal);color:#04241f;padding:7px 14px;border-radius:8px;font-weight:600;font-size:14px}
+nav a.item.active{color:var(--teal);border-bottom-color:var(--teal)}
+nav .cta{margin-left:auto;background:var(--teal);color:#04241f;padding:7px 14px;border-radius:8px;font-weight:600;font-size:14px;white-space:nowrap}
 nav .cta:hover{text-decoration:none;filter:brightness(1.1)}
-section{padding:72px 0;border-bottom:1px solid var(--line)}
+.burger{display:none;background:none;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:5px 11px;font-size:18px;line-height:1}
+@media (max-width: 960px){
+  .burger{display:block}
+  nav .menu{position:fixed;top:56px;left:0;right:0;background:rgba(11,16,32,.97);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);display:none;flex-direction:column;align-items:stretch;gap:0;padding:6px 22px 14px}
+  nav .menu.open{display:flex}
+  nav .menu a.item{padding:13px 2px;border-bottom:1px solid var(--line);font-size:15px}
+  nav .menu a.item.active{border-bottom-color:var(--teal)}
+}
+section{padding:72px 0;border-bottom:1px solid var(--line);scroll-margin-top:66px}
+.totop{position:fixed;right:18px;bottom:18px;width:44px;height:44px;border-radius:50%;background:var(--teal);color:#04241f;border:none;font-size:19px;font-weight:800;opacity:0;pointer-events:none;transition:.25s;z-index:60;box-shadow:0 4px 18px rgba(0,0,0,.4)}
+.totop.show{opacity:1;pointer-events:auto}
+.totop:hover{filter:brightness(1.12)}
+footer .fcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:26px}
+footer h3{color:var(--txt);font-size:14px;margin-bottom:10px;letter-spacing:.06em;text-transform:uppercase}
+footer a.f{display:block;color:var(--mut);padding:4px 0;font-size:13.5px}
+footer a.f:hover{color:var(--teal);text-decoration:none}
+footer .legal{margin-top:28px;border-top:1px solid var(--line);padding-top:18px}
 h1{font-size:42px;line-height:1.15;font-weight:800}
 h1 .grad{background:linear-gradient(90deg,var(--teal),var(--indigo));-webkit-background-clip:text;background-clip:text;color:transparent}
 h2{font-size:28px;font-weight:700;margin-bottom:8px}
@@ -103,17 +122,21 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
 </head>
 <body>
 
+<span id="top"></span>
 <nav><div class="wrap">
-  <span class="logo">tvist<b>.ai</b></span>
-  <a class="item" href="#pain">Pain points</a>
-  <a class="item" href="#arch">Architecture</a>
-  <a class="item" href="#components">Components</a>
-  <a class="item" href="#personas">Personas</a>
-  <a class="item" href="#usecases">Use cases</a>
-  <a class="item" href="#api">API</a>
-  <a class="item" href="#try">Try live</a>
-  <a class="item" href="#downloads">Downloads</a>
+  <a class="logo" href="#top" title="Back to top">tvist<b>.ai</b></a>
+  <div class="menu" id="menu">
+    <a class="item" href="#pain">Pain points</a>
+    <a class="item" href="#arch">Architecture</a>
+    <a class="item" href="#components">Components</a>
+    <a class="item" href="#personas">Personas</a>
+    <a class="item" href="#usecases">Use cases</a>
+    <a class="item" href="#api">API</a>
+    <a class="item" href="#try">Try live</a>
+    <a class="item" href="#downloads">Downloads</a>
+  </div>
   <a class="cta" href="#try">Test the API</a>
+  <button class="burger" id="burger" onclick="toggleMenu()" aria-label="Open menu" aria-expanded="false" aria-controls="menu">☰</button>
 </div></nav>
 
 <!-- HERO -->
@@ -540,12 +563,47 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
 </section>
 
 <footer><div class="wrap">
-  <b>tvist<span style="color:var(--teal)">.ai</span></b> — escrow, consent &amp; dispute for AI agents ·
-  sandbox with notional credits, not a bank ·
-  built on the Tvist payments layer from the Nanda Town hackathon ·
-  <a href="/" onclick="event.preventDefault();go(demoDiscovery)">JSON index (live)</a> ·
-  <a href="/health">health</a> · <a href="/stats">stats</a>
+  <div class="fcols">
+    <div>
+      <h3>Explore</h3>
+      <a class="f" href="#pain">Pain points</a>
+      <a class="f" href="#arch">Architecture &amp; flow</a>
+      <a class="f" href="#components">Key components</a>
+      <a class="f" href="#personas">Personas</a>
+      <a class="f" href="#usecases">Use cases</a>
+    </div>
+    <div>
+      <h3>Test &amp; integrate</h3>
+      <a class="f" href="#api">API reference</a>
+      <a class="f" href="#try">Live playground</a>
+      <a class="f" href="/docs">Swagger UI</a>
+      <a class="f" href="/openapi.json">OpenAPI spec</a>
+      <a class="f" href="/" onclick="event.preventDefault();go(demoDiscovery)">JSON index (run live)</a>
+    </div>
+    <div>
+      <h3>Live endpoints</h3>
+      <a class="f" href="/health">/health — liveness</a>
+      <a class="f" href="/stats">/stats — live metrics</a>
+      <a class="f" href="/regions">/regions — all regimes</a>
+    </div>
+    <div>
+      <h3>Deliverables</h3>
+      <a class="f" href="/skill.md" download="SKILL.md">⤓ SKILL.md</a>
+      <a class="f" href="/readme.md" download="README.md">⤓ README.md</a>
+      <a class="f" href="/openapi.json" download="tvist-openapi.json">⤓ OpenAPI JSON</a>
+      <a class="f" href="#downloads">All downloads</a>
+    </div>
+  </div>
+  <p class="legal">
+    <b>tvist<span style="color:var(--teal)">.ai</span></b> — escrow, consent &amp; dispute for AI agents ·
+    dual-use: humans get this page, agents get JSON at the same URL ·
+    sandbox with notional credits, not a bank ·
+    built on the Tvist payments layer from the Nanda Town hackathon ·
+    <a href="#top">back to top ↑</a>
+  </p>
 </div></footer>
+
+<button id="totop" class="totop" onclick="scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">↑</button>
 
 <script>
 // ---- reveal-on-scroll + metric count-up ------------------------------------
@@ -883,6 +941,44 @@ async function callSilent(m, p, body){
     return {status: r.status, data: await r.json()}; }
   catch(e){ return {status:0, data:null}; }
 }
+
+// ---- navigation logic: scrollspy, mobile menu, back-to-top ---------------------
+const menuEl = document.getElementById('menu');
+const burgerEl = document.getElementById('burger');
+function toggleMenu(force){
+  const open = force !== undefined ? force : !menuEl.classList.contains('open');
+  menuEl.classList.toggle('open', open);
+  burgerEl.setAttribute('aria-expanded', String(open));
+  burgerEl.textContent = open ? '✕' : '☰';
+}
+// selecting an item (or any anchor) closes the mobile menu
+menuEl.querySelectorAll('a').forEach(a => a.addEventListener('click', () => toggleMenu(false)));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleMenu(false); });
+document.addEventListener('click', e => {
+  if (menuEl.classList.contains('open') && !menuEl.contains(e.target) && e.target !== burgerEl)
+    toggleMenu(false);
+});
+
+// scrollspy: highlight the section currently in view; toggle back-to-top
+const spyLinks = [...menuEl.querySelectorAll('a.item')];
+const spyIds = spyLinks.map(a => a.getAttribute('href').slice(1));
+let spyTick = false;
+function spy(){
+  spyTick = false;
+  const y = scrollY + 100;
+  let cur = '';
+  for (const id of spyIds){
+    const el = document.getElementById(id);
+    if (el && el.offsetTop <= y) cur = id;
+  }
+  // past the last section's end (footer) → keep Downloads active
+  spyLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + cur));
+  document.getElementById('totop').classList.toggle('show', scrollY > 600);
+}
+addEventListener('scroll', () => { if (!spyTick){ spyTick = true; requestAnimationFrame(spy); } },
+  {passive: true});
+addEventListener('resize', spy, {passive: true});
+spy();
 </script>
 </body>
 </html>
