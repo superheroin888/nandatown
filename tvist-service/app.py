@@ -272,6 +272,7 @@ def _index() -> dict[str, Any]:
         "skill": "See SKILL.md. OpenAPI at /openapi.json, interactive docs at /docs.",
         "endpoints": {
             "GET /health": "liveness",
+            "GET /stats": "live service metrics (accounts, settlements, escrows, funds)",
             "GET /skill.md": "download the agent-facing SKILL.md",
             "GET /readme.md": "download the service README",
             "GET /regions": "list all jurisdictions and their dispute regimes",
@@ -295,6 +296,33 @@ def _index() -> dict[str, Any]:
 def health() -> dict[str, str]:
     """Liveness check."""
     return {"status": "ok"}
+
+
+@app.get("/stats")
+def stats() -> dict[str, Any]:
+    """Live service metrics — powers the homepage and lets agents observe state.
+
+    ``total_funds`` (balances + escrow holds) is the conservation invariant: it
+    only grows when a new account is auto-created, never from payments moving.
+    """
+    from fastapi.routing import APIRoute
+
+    held = sum(e.amount for e in LEDGER.escrows.values() if e.status in ("FUNDED", "CONTESTED"))
+    by_status: dict[str, int] = {}
+    for e in LEDGER.escrows.values():
+        by_status[e.status] = by_status.get(e.status, 0) + 1
+    return {
+        "accounts": len(LEDGER.balances),
+        "consents": len(LEDGER.consents),
+        "settlements": len(LEDGER.settlements),
+        "recalled": sum(1 for s in LEDGER.settlements.values() if s.reversed),
+        "escrows": {"total": len(LEDGER.escrows), **by_status},
+        "held_credits": held,
+        "disputes": len(LEDGER.cases),
+        "total_funds": sum(LEDGER.balances.values()) + held,
+        "regions": len(REGIONS),
+        "endpoints": len([r for r in app.routes if isinstance(r, APIRoute)]),
+    }
 
 
 @app.get("/regions")

@@ -54,6 +54,7 @@ All request/response bodies are JSON. Errors return `{"error": "..."}` with a
 | `POST /recall` | `{ref, consent_id, current_tick?}` | Reverse a settled payment **only** if region allows recall AND the payment breached the mandate |
 | `POST /dispute` | `{ref, region, reason_code}` | Accepted only if `reason_code` is valid in that region |
 | `GET /accounts/{name}` | — | Notional balance |
+| `GET /stats` | — | Live service metrics (accounts, settlements, escrows, held credits, funds) |
 
 ## Steps to use (copy-paste curl)
 

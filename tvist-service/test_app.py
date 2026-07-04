@@ -75,6 +75,46 @@ def test_homepage_has_playground_and_dual_use(client: TestClient) -> None:
     assert "runFlow()" in html         # real fetch-driven buttons
 
 
+def test_homepage_fully_wired_to_endpoints(client: TestClient) -> None:
+    """Every section of the page is functional: live pill, metrics, explorer, demos."""
+    html = client.get("/", headers={"accept": "text/html"}).text
+    assert "fetch('/health')" in html          # live status pill
+    assert "fetch('/stats')" in html           # live metrics + stats strip
+    assert "fetch('/regions')" in html         # region explorer hydration
+    assert "/regions/recommend" in html        # Nash recommender widget
+    assert 'id="statbar"' in html              # live stats strip
+    assert "verifyGate(" in html               # self-verifying gate table
+    assert "demoDigiDoot" in html              # runnable use cases
+    assert "demoPrincipal" in html             # runnable personas
+    assert "stepRecommend" in html             # clickable flow-chart nodes
+
+
+def test_stats_endpoint(client: TestClient) -> None:
+    s = client.get("/stats").json()
+    assert s["regions"] == 22
+    assert s["endpoints"] >= 15
+    assert s["settlements"] == 0
+    assert s["total_funds"] == 0  # no accounts touched yet
+
+
+def test_stats_tracks_activity_and_conserves_funds(client: TestClient) -> None:
+    # Create both accounts first so total_funds is fixed, then verify a payment
+    # and an escrow move value around without changing the conserved total.
+    client.get("/accounts/a")
+    client.get("/accounts/b")
+    start = client.get("/stats").json()["total_funds"]
+    client.post("/pay", json={"ref": "s1", "from_account": "a", "to_account": "b",
+                              "amount": 100, "region": "in_upi"})
+    client.post("/escrow", json={"escrow_id": "se1", "payer": "a", "payee": "b",
+                                 "amount": 50, "region": "in_upi",
+                                 "condition_expected": "done"})
+    s = client.get("/stats").json()
+    assert s["settlements"] == 1
+    assert s["escrows"]["total"] == 1
+    assert s["held_credits"] == 50
+    assert s["total_funds"] == start  # conservation invariant
+
+
 def test_openapi_served(client: TestClient) -> None:
     spec = client.get("/openapi.json").json()
     assert "/regions/recommend" in spec["paths"]
