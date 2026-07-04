@@ -22,10 +22,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
@@ -214,8 +215,43 @@ app = FastAPI(
 )
 
 
-@app.get("/")
-def root() -> dict[str, Any]:
+_HERE = Path(__file__).resolve().parent
+_HOME = _HERE / "static" / "index.html"
+
+
+@app.get("/", response_model=None)
+def root(request: Request) -> HTMLResponse | dict[str, Any]:
+    """Homepage for browsers; self-describing JSON index for agents.
+
+    Content negotiation: a request whose Accept header prefers ``text/html`` (a
+    browser) gets the animated homepage; everything else (curl, agent SDKs) gets
+    the JSON endpoint index, so the SKILL.md contract is unchanged.
+    """
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and _HOME.exists():
+        return HTMLResponse(_HOME.read_text())
+    return _index()
+
+
+@app.get("/skill.md")
+def skill_md() -> FileResponse:
+    """Download the agent-facing SKILL.md (the one file an agent needs)."""
+    path = _HERE / "SKILL.md"
+    if not path.exists():
+        raise HTTPException(404, "SKILL.md not found")
+    return FileResponse(path, media_type="text/markdown", filename="SKILL.md")
+
+
+@app.get("/readme.md")
+def readme_md() -> FileResponse:
+    """Download the service README (run locally / deploy)."""
+    path = _HERE / "README.md"
+    if not path.exists():
+        raise HTTPException(404, "README.md not found")
+    return FileResponse(path, media_type="text/markdown", filename="README.md")
+
+
+def _index() -> dict[str, Any]:
     """Self-describing index: what this is and every endpoint an agent can call."""
     return {
         "service": "Tvist API",
@@ -223,6 +259,8 @@ def root() -> dict[str, Any]:
         "skill": "See SKILL.md. OpenAPI at /openapi.json, interactive docs at /docs.",
         "endpoints": {
             "GET /health": "liveness",
+            "GET /skill.md": "download the agent-facing SKILL.md",
+            "GET /readme.md": "download the service README",
             "GET /regions": "list all jurisdictions and their dispute regimes",
             "POST /regions/recommend": "Nash-optimal region for two parties {client_prefs, agent_prefs}",
             "POST /consent": "store a spend mandate {consent_id, principal, budget, merchant_allowlist?}",

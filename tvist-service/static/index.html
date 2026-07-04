@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tvist API — escrow, consent &amp; dispute for AI agents</title>
+<meta name="description" content="Tvist.ai — the settlement-trust layer for agentic commerce. Nash-optimal jurisdiction, consent vault, programmable escrow, region-aware recall.">
+<style>
+:root{
+  --bg:#0b1020; --bg2:#101736; --card:#151d3f; --line:#26305e;
+  --teal:#2dd4bf; --teal-d:#0f766e; --indigo:#818cf8; --coral:#fb7185;
+  --amber:#fbbf24; --green:#4ade80; --red:#f87171;
+  --txt:#e6eaf6; --mut:#93a0c4; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1060px;margin:0 auto;padding:0 22px}
+nav{position:sticky;top:0;z-index:50;background:rgba(11,16,32,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:22px;height:56px}
+nav .logo{font-weight:700;font-size:18px;color:var(--txt)}
+nav .logo b{color:var(--teal)}
+nav a.item{color:var(--mut);font-size:14px}
+nav a.item:hover{color:var(--txt);text-decoration:none}
+nav .cta{margin-left:auto;background:var(--teal);color:#04241f;padding:7px 14px;border-radius:8px;font-weight:600;font-size:14px}
+nav .cta:hover{text-decoration:none;filter:brightness(1.1)}
+section{padding:72px 0;border-bottom:1px solid var(--line)}
+h1{font-size:42px;line-height:1.15;font-weight:800}
+h1 .grad{background:linear-gradient(90deg,var(--teal),var(--indigo));-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:28px;font-weight:700;margin-bottom:8px}
+h3{font-size:17px;font-weight:600}
+.kicker{color:var(--teal);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px;margin-bottom:10px}
+.sub{color:var(--mut);max-width:760px}
+.grid{display:grid;gap:16px;margin-top:28px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.card p{color:var(--mut);font-size:14px;margin-top:6px}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;padding:2px 9px;border-radius:99px;margin-bottom:10px}
+.tag.t{background:rgba(45,212,191,.14);color:var(--teal)}
+.tag.i{background:rgba(129,140,248,.14);color:var(--indigo)}
+.tag.c{background:rgba(251,113,133,.14);color:var(--coral)}
+.tag.a{background:rgba(251,191,36,.14);color:var(--amber)}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:34px}
+.metric{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center;position:relative;overflow:hidden}
+.metric .n{font-size:34px;font-weight:800;color:var(--teal)}
+.metric .l{font-size:12.5px;color:var(--mut)}
+.metric::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:100%;background:linear-gradient(90deg,var(--teal),var(--indigo));transform:scaleX(0);transform-origin:left;transition:transform 1.4s ease}
+.metric.seen::after{transform:scaleX(1)}
+pre{background:#0a0f22;border:1px solid var(--line);border-radius:12px;padding:16px;font-family:var(--mono);font-size:12.5px;line-height:1.6;overflow-x:auto;color:#c7d2ee}
+pre .c{color:#5b6b96} pre .g{color:var(--green)} pre .r{color:var(--red)} pre .y{color:var(--amber)}
+code{font-family:var(--mono);font-size:13px;background:var(--bg2);border:1px solid var(--line);padding:1px 6px;border-radius:6px}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);color:var(--txt);padding:11px 18px;border-radius:10px;font-weight:600;font-size:14.5px;transition:.2s}
+.btn:hover{border-color:var(--teal);text-decoration:none;transform:translateY(-1px)}
+.btn.solid{background:var(--teal);color:#04241f;border-color:var(--teal)}
+.btnrow{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
+.reveal.seen{opacity:1;transform:none}
+table{width:100%;border-collapse:collapse;margin-top:20px;font-size:14px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+td code{white-space:nowrap}
+.ok{color:var(--green);font-weight:700} .no{color:var(--red);font-weight:700}
+footer{padding:40px 0;color:var(--mut);font-size:13.5px}
+.pill{display:inline-flex;align-items:center;gap:7px;background:var(--bg2);border:1px solid var(--line);border-radius:99px;padding:6px 14px;font-size:13px;color:var(--mut);margin-bottom:22px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(74,222,128,.5)}50%{box-shadow:0 0 0 6px rgba(74,222,128,0)}}
+/* SVG flow animation */
+.flowbox{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:30px;overflow-x:auto}
+.flow .lane{stroke:var(--line);stroke-width:1;stroke-dasharray:3 5}
+.flow .node{fill:var(--card);stroke:var(--line);stroke-width:1.2;rx:10}
+.flow .node.hot{stroke:var(--teal)}
+.flow .node.gate{stroke:var(--coral)}
+.flow text{fill:var(--txt);font:600 12.5px -apple-system,Segoe UI,Roboto,sans-serif}
+.flow .small{fill:var(--mut);font-weight:400;font-size:10.5px}
+.flow .arrow{stroke:var(--teal);stroke-width:2;fill:none;marker-end:url(#ah);stroke-dasharray:6 6;animation:dash 1.1s linear infinite}
+.flow .arrow.block{stroke:var(--red);marker-end:url(#ahr)}
+.flow .arrow.slow{animation-duration:1.8s}
+@keyframes dash{to{stroke-dashoffset:-12}}
+.flow .spark{fill:var(--teal)}
+.flow .spark.red{fill:var(--red)}
+.flow .glabel{fill:var(--teal);font-size:10.5px;font-weight:700;letter-spacing:.08em}
+@media (prefers-reduced-motion: reduce){.flow .arrow{animation:none}.dot{animation:none}}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <span class="logo">tvist<b>.ai</b></span>
+  <a class="item" href="#pain">Pain points</a>
+  <a class="item" href="#arch">Architecture</a>
+  <a class="item" href="#components">Components</a>
+  <a class="item" href="#personas">Personas</a>
+  <a class="item" href="#usecases">Use cases</a>
+  <a class="item" href="#api">API</a>
+  <a class="item" href="#downloads">Downloads</a>
+  <a class="cta" href="/docs">Try the API</a>
+</div></nav>
+
+<!-- HERO -->
+<section>
+  <div class="wrap">
+    <span class="pill"><span class="dot"></span> Live sandbox · no auth · notional credits</span>
+    <h1>The <span class="grad">settlement-trust layer</span><br>for agentic commerce.</h1>
+    <p class="sub" style="margin-top:18px;font-size:18px">
+      AI agents are starting to move money on people's behalf — over instant rails that are
+      <b>irrevocable by design</b>. Tvist is the missing layer between "the agent paid" and
+      "the human is protected": jurisdiction chosen up front, consent enforced, funds escrowed
+      until delivery, recalls only on proof.
+    </p>
+    <div class="btnrow">
+      <a class="btn solid" href="/skill.md">⤓ SKILL.md — for agents</a>
+      <a class="btn" href="/docs">Interactive docs</a>
+      <a class="btn" href="/openapi.json">OpenAPI spec</a>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="n" data-count="22">0</div><div class="l">jurisdictions · 6 continents</div></div>
+      <div class="metric"><div class="n" data-count="13">0</div><div class="l">agent-callable endpoints</div></div>
+      <div class="metric"><div class="n" data-count="4">0</div><div class="l">protection gates</div></div>
+      <div class="metric"><div class="n" data-count="27">0</div><div class="l">passing e2e tests</div></div>
+      <div class="metric"><div class="n" data-count="1">0</div><div class="l">markdown file to integrate</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- PAIN POINTS -->
+<section id="pain">
+  <div class="wrap reveal">
+    <div class="kicker">Why this exists</div>
+    <h2>Four pain points a plain "send money" call can't solve</h2>
+    <p class="sub">Everyone built agent-payment rails. Nobody built the dispute &amp; escrow layer across them.</p>
+    <div class="grid g2">
+      <div class="card"><span class="tag c">Pain 1 · Irrevocability</span>
+        <h3>Push payments don't come back</h3>
+        <p>Pix, SEPA Instant, FedNow, UPI settle in seconds and are final. A wrong or fraudulent
+        agent payment is gone — unless a lawful recall path existed <i>before</i> the money moved.</p></div>
+      <div class="card"><span class="tag c">Pain 2 · Intent ambiguity</span>
+        <h3>"Did the human actually authorise this?"</h3>
+        <p>When agents transact, the dominant dispute becomes mandate scope. Without a consent
+        vault, there's no proof of what the principal approved — and no basis to refuse or recall.</p></div>
+      <div class="card"><span class="tag c">Pain 3 · Jurisdiction chaos</span>
+        <h3>Every rail speaks a different dispute language</h3>
+        <p>Pix MED 2.0 gives 11 days to recover; SEPA has SCT-Inst recall; FedNow has <b>no</b>
+        federal recall standard. Reason codes don't translate. Agents need one canonical map.</p></div>
+      <div class="card"><span class="tag c">Pain 4 · Blind prepayment</span>
+        <h3>Paying before delivery, on a final rail</h3>
+        <p>An agent that prepays on an irrevocable rail has zero leverage if the service never
+        arrives. Escrow — hold until delivery is provable — is the natural construct. Nobody ships
+        it rail-agnostically.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE + ANIMATED FLOW -->
+<section id="arch">
+  <div class="wrap reveal">
+    <div class="kicker">Architecture</div>
+    <h2>One transaction, four gates — follow the flow</h2>
+    <p class="sub">Every payment walks the same pipeline. Green arrows are the happy path;
+    red arrows are attacks the gates refuse. The arrows animate in the direction funds and
+    decisions actually move.</p>
+
+    <div class="flowbox">
+    <svg class="flow" viewBox="0 0 1000 470" width="100%" role="img" aria-label="Tvist transaction pipeline: negotiate region, check consent, escrow, deliver, release; attacks are blocked at each gate">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2dd4bf"/></marker>
+        <marker id="ahr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f87171"/></marker>
+      </defs>
+
+      <!-- lanes -->
+      <line class="lane" x1="20" y1="95" x2="980" y2="95"/>
+      <line class="lane" x1="20" y1="330" x2="980" y2="330"/>
+      <text class="glabel" x="24" y="30">HAPPY PATH — value flows only when every gate opens</text>
+      <text class="glabel" x="24" y="360" style="fill:#f87171">ATTACKS — refused at the gate, funds never move</text>
+
+      <!-- happy path nodes -->
+      <g>
+        <rect class="node hot" x="24"  y="55" width="150" height="78" rx="10"/>
+        <text x="40" y="84">1 · Negotiate</text><text class="small" x="40" y="102">POST /regions/recommend</text>
+        <text class="small" x="40" y="118">Nash-optimal region</text>
+
+        <rect class="node hot" x="232" y="55" width="150" height="78" rx="10"/>
+        <text x="248" y="84">2 · Consent</text><text class="small" x="248" y="102">POST /consent</text>
+        <text class="small" x="248" y="118">budget + allowlist</text>
+
+        <rect class="node hot" x="440" y="55" width="150" height="78" rx="10"/>
+        <text x="456" y="84">3 · Escrow</text><text class="small" x="456" y="102">POST /escrow</text>
+        <text class="small" x="456" y="118">funds held, not paid</text>
+
+        <rect class="node hot" x="648" y="55" width="150" height="78" rx="10"/>
+        <text x="664" y="84">4 · Deliver</text><text class="small" x="664" y="102">POST /escrow/:id/deliver</text>
+        <text class="small" x="664" y="118">proof == condition</text>
+
+        <rect class="node hot" x="856" y="55" width="124" height="78" rx="10"/>
+        <text x="872" y="84">5 · Release</text><text class="small" x="872" y="102">payee is paid</text>
+        <text class="small" x="872" y="118">✓ only after proof</text>
+      </g>
+
+      <!-- happy arrows -->
+      <path class="arrow" d="M174 94 H 228"/>
+      <path class="arrow" d="M382 94 H 436"/>
+      <path class="arrow" d="M590 94 H 644"/>
+      <path class="arrow" d="M798 94 H 852"/>
+
+      <!-- moving spark on happy path -->
+      <circle class="spark" r="4">
+        <animateMotion dur="5s" repeatCount="indefinite" path="M100 94 H930"/>
+      </circle>
+
+      <!-- metric arrows: annotations under the path -->
+      <g>
+        <path class="arrow slow" d="M100 140 V 175"/>
+        <text class="small" x="60" y="196">22 regimes scored</text>
+        <path class="arrow slow" d="M308 140 V 175"/>
+        <text class="small" x="264" y="196">403 if over budget</text>
+        <path class="arrow slow" d="M516 140 V 175"/>
+        <text class="small" x="470" y="196">100% funds held</text>
+        <path class="arrow slow" d="M724 140 V 175"/>
+        <text class="small" x="676" y="196">tamper-proof match</text>
+        <path class="arrow slow" d="M918 140 V 175"/>
+        <text class="small" x="874" y="196">0 blind payouts</text>
+      </g>
+
+      <!-- gates row -->
+      <g>
+        <rect class="node gate" x="128" y="215" width="168" height="66" rx="10"/>
+        <text x="144" y="242">Gate · Region</text><text class="small" x="144" y="260">no overlap → no deal</text>
+        <rect class="node gate" x="356" y="215" width="168" height="66" rx="10"/>
+        <text x="372" y="242">Gate · Mandate</text><text class="small" x="372" y="260">outside consent → 403</text>
+        <rect class="node gate" x="584" y="215" width="168" height="66" rx="10"/>
+        <text x="600" y="242">Gate · Delivery</text><text class="small" x="600" y="260">no proof → no release</text>
+        <rect class="node gate" x="812" y="215" width="168" height="66" rx="10"/>
+        <text x="828" y="242">Gate · Recall</text><text class="small" x="828" y="260">regime + breach only</text>
+      </g>
+
+      <!-- attack nodes -->
+      <g>
+        <rect class="node" x="24" y="380" width="200" height="66" rx="10"/>
+        <text x="40" y="407">No-overlap parties</text><text class="small" x="40" y="425">agreed_region: null</text>
+        <rect class="node" x="272" y="380" width="200" height="66" rx="10"/>
+        <text x="288" y="407">Over-mandate charge</text><text class="small" x="288" y="425">900 &gt; consent 500</text>
+        <rect class="node" x="520" y="380" width="200" height="66" rx="10"/>
+        <text x="536" y="407">Escrow drain attempt</text><text class="small" x="536" y="425">release before delivery</text>
+        <rect class="node" x="768" y="380" width="212" height="66" rx="10"/>
+        <text x="784" y="407">Unilateral clawback</text><text class="small" x="784" y="425">recall w/o breach → refused</text>
+      </g>
+
+      <!-- attack arrows up into gates (blocked) -->
+      <path class="arrow block" d="M124 378 C 140 330, 175 305, 200 285"/>
+      <path class="arrow block" d="M372 378 C 388 330, 415 305, 435 285"/>
+      <path class="arrow block" d="M620 378 C 636 330, 655 305, 665 285"/>
+      <path class="arrow block" d="M874 378 C 886 330, 894 310, 896 285"/>
+      <circle class="spark red" r="4"><animateMotion dur="2.4s" repeatCount="indefinite" path="M124 378 C 140 330, 175 305, 200 285"/></circle>
+      <circle class="spark red" r="4"><animateMotion dur="2.4s" begin="0.6s" repeatCount="indefinite" path="M620 378 C 636 330, 655 305, 665 285"/></circle>
+    </svg>
+    </div>
+
+    <div class="grid g3" style="margin-top:22px">
+      <div class="card"><span class="tag t">Layer 1</span><h3>Region regimes</h3>
+        <p>22 real instant/A2A rails, each encoded with irrevocability, recall window and dispute
+        taxonomy. The Nash-bargaining recommender picks the <i>jointly</i> optimal jurisdiction.</p></div>
+      <div class="card"><span class="tag t">Layer 2</span><h3>Consent vault</h3>
+        <p>The principal's explicit mandate — budget and merchant allowlist — stored before the
+        agent moves a single credit, and enforced on every settle.</p></div>
+      <div class="card"><span class="tag t">Layer 3</span><h3>Value engine</h3>
+        <p>Ledger + escrow + recall. Conservation-checked: balances plus holds are invariant across
+        every pay / hold / release / recall sequence.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- KEY COMPONENTS -->
+<section id="components">
+  <div class="wrap reveal">
+    <div class="kicker">Key components</div>
+    <h2>Five primitives, one API surface</h2>
+    <div class="grid g2">
+      <div class="card"><span class="tag i">Component</span><h3>🗺️ Region recommender</h3>
+        <p><code>POST /regions/recommend</code> — reads each party's ranked list as ordinal utilities and returns
+        the <b>Nash bargaining solution</b>: max u<sub>client</sub>·u<sub>agent</sub>, tie-broken by maximin fairness.
+        Client wants SEPA, agent wants UPI? It finds Pix — the fair middle. <code>null</code> = don't transact.</p></div>
+      <div class="card"><span class="tag i">Component</span><h3>🔏 Consent vault</h3>
+        <p><code>POST /consent</code> + enforcement inside <code>/pay</code>. A payment above the budget or off
+        the allowlist is refused with <code>403</code> before funds move — the DigiDoot "explicit consent" model.</p></div>
+      <div class="card"><span class="tag i">Component</span><h3>🔒 Programmable escrow</h3>
+        <p><code>POST /escrow → /deliver → /release</code>. Funds leave the payer at open, reach the payee only
+        when <code>proof == condition_expected</code>. Contest blocks release; refund makes the payer whole.</p></div>
+      <div class="card"><span class="tag i">Component</span><h3>↩️ Region-aware recall</h3>
+        <p><code>POST /recall</code> — reverses a settled payment <b>only</b> when the region permits recall
+        <i>and</i> the payment provably breached the mandate. FedNow refuses; UPI/Pix honour a breach.</p></div>
+      <div class="card"><span class="tag i">Component</span><h3>⚖️ Dispute taxonomy</h3>
+        <p><code>POST /dispute</code> — accepts a case only if the reason code is valid in the agreed region.
+        <code>pix_med_return</code> under UPI? Rejected. The canonical cross-rail translation table.</p></div>
+      <div class="card"><span class="tag a">Meta</span><h3>🤖 Self-describing for agents</h3>
+        <p><code>GET /</code> lists every endpoint as JSON; <code>GET /openapi.json</code> is the machine spec;
+        <a href="/skill.md">SKILL.md</a> is the one file an agent needs to succeed unaided.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PERSONAS -->
+<section id="personas">
+  <div class="wrap reveal">
+    <div class="kicker">Personas</div>
+    <h2>Who calls Tvist — and what breaks without it</h2>
+    <div class="grid g2">
+      <div class="card"><span class="tag t">Persona</span><h3>🛒 The shopping / booking agent</h3>
+        <p><b>Job:</b> spends its principal's money on flights, goods, subscriptions.<br>
+        <b>Without Tvist:</b> prepays on final rails, overspends its mandate, no recourse.<br>
+        <b>With Tvist:</b> escrows the fare, pays inside consent, disputes with valid codes.</p></div>
+      <div class="card"><span class="tag t">Persona</span><h3>🧑‍🦱 The principal (human)</h3>
+        <p><b>Job:</b> delegates — "book it, up to 500".<br>
+        <b>Without Tvist:</b> discovers the 900-credit charge after settlement, on an irrevocable rail.<br>
+        <b>With Tvist:</b> the 900 charge is a <code>403</code>; a slipped-through breach is recalled.</p></div>
+      <div class="card"><span class="tag t">Persona</span><h3>🏪 The service-provider agent</h3>
+        <p><b>Job:</b> sells to agents it has never met.<br>
+        <b>Without Tvist:</b> ships first and prays, or demands prepay and loses sales.<br>
+        <b>With Tvist:</b> sees funds locked in escrow before shipping; paid the instant proof lands.</p></div>
+      <div class="card"><span class="tag t">Persona</span><h3>🏛️ The marketplace / platform</h3>
+        <p><b>Job:</b> hosts thousands of agent↔agent trades across borders.<br>
+        <b>Without Tvist:</b> hand-rolls dispute rules per corridor, per rail, per regulator.<br>
+        <b>With Tvist:</b> one call returns the jointly-optimal jurisdiction and its full regime.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- USE CASES -->
+<section id="usecases">
+  <div class="wrap reveal">
+    <div class="kicker">Use cases</div>
+    <h2>From a travel booking to a national-scale agent network</h2>
+    <div class="grid g3">
+      <div class="card"><span class="tag a">Use case</span><h3>✈️ Escrowed travel booking</h3>
+        <p>Agent escrows the fare; airline is paid only when <code>ticket_issued</code> lands. The SKILL.md
+        worked example — runs end-to-end with 5 curl calls.</p></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🇮🇳 DigiDoot — an agent per citizen</h3>
+        <p>India's citizen agents (Aadhaar + UPI + consent) use Tvist as the settlement endpoint:
+        welfare within mandate, bookings escrowed, rogue charges recalled under the UPI regime.</p></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🤝 Cross-border agent trade</h3>
+        <p>EU client-agent, Brazilian seller-agent: the recommender lands on Pix as the Nash optimum,
+        and both sides know the recall window before a credit moves.</p></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🛰️ Marketplace dispute rail</h3>
+        <p>Platforms route every contested trade through <code>/dispute</code> with region-valid codes —
+        one taxonomy instead of N rail-specific ones.</p></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🧾 Subscription guardrails</h3>
+        <p>A recurring agent payment carries a standing consent; the first renewal above budget is
+        refused, not refunded-after-the-fact.</p></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🧪 Protocol testbeds</h3>
+        <p>The same logic ships as a <code>payments</code> plugin in Nanda Town — run adversarial swarm
+        scenarios against it before touching production rails.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- API -->
+<section id="api">
+  <div class="wrap reveal">
+    <div class="kicker">API</div>
+    <h2>Thirteen endpoints. One curl to start.</h2>
+<pre>
+<span class="c"># the fair jurisdiction for two parties who want different things</span>
+curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
+  -d '{"client_prefs":["eu_sepa","br_pix","in_upi"],"agent_prefs":["in_upi","br_pix","eu_sepa"]}'
+<span class="g">→ {"agreed_region":"br_pix","method":"nash_bargaining","naive_client_first":"eu_sepa"}</span>
+
+<span class="c"># over-consent charge — refused before funds move</span>
+curl -s -X POST $BASE/pay -d '{"ref":"p2","from_account":"alice","to_account":"shop",
+  "amount":900,"region":"br_pix","consent_id":"c1"}'
+<span class="r">→ 403 {"error":"payment 900 to shop exceeds consent c1"}</span>
+
+<span class="c"># escrow release before delivery — refused</span>
+curl -s -X POST $BASE/escrow/e1/release
+<span class="r">→ 403 {"error":"release condition not satisfied (not delivered)"}</span>
+
+<span class="c"># mandate-breach recall under UPI — honoured, citizen made whole</span>
+curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
+<span class="g">→ {"reversed":true,"reason":"mandate breach recalled"}</span>
+</pre>
+    <table>
+      <tr><th>Gate</th><th>Attack</th><th>Plain ledger</th><th>Tvist</th></tr>
+      <tr><td>Region</td><td>Transact with no shared jurisdiction</td><td class="no">settles ungoverned</td><td class="ok">null → no deal</td></tr>
+      <tr><td>Mandate</td><td>Charge beyond the principal's consent</td><td class="no">pays</td><td class="ok">403 refused</td></tr>
+      <tr><td>Delivery</td><td>Drain escrow without delivering</td><td class="no">paid up front</td><td class="ok">release blocked</td></tr>
+      <tr><td>Recall</td><td>Claw back a legitimate final payment</td><td class="no">refund reverses it</td><td class="ok">refused w/o breach</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- DOWNLOADS -->
+<section id="downloads">
+  <div class="wrap reveal">
+    <div class="kicker">Downloads · hackathon deliverables</div>
+    <h2>Everything an agent — or a judge — needs</h2>
+    <p class="sub">Per the NANDA Town skills-track logic: a hosted service, tested endpoints, and a
+    SKILL.md an agent can succeed with unaided.</p>
+    <div class="grid g3">
+      <div class="card"><span class="tag t">Markdown</span><h3>SKILL.md</h3>
+        <p>The agent contract: endpoints, copy-paste curl steps, a full worked example, error semantics.</p>
+        <div class="btnrow"><a class="btn solid" href="/skill.md" download="SKILL.md">⤓ Download</a><a class="btn" href="/skill.md">View raw</a></div></div>
+      <div class="card"><span class="tag t">Markdown</span><h3>README.md</h3>
+        <p>Run locally, deploy to Railway / Render / Fly / Docker in one command, health checks.</p>
+        <div class="btnrow"><a class="btn solid" href="/readme.md" download="README.md">⤓ Download</a><a class="btn" href="/readme.md">View raw</a></div></div>
+      <div class="card"><span class="tag t">Spec</span><h3>OpenAPI 3.1</h3>
+        <p>The machine-readable contract — enough for any agent framework to generate a client.</p>
+        <div class="btnrow"><a class="btn solid" href="/openapi.json" download="tvist-openapi.json">⤓ Download</a><a class="btn" href="/docs">Swagger UI</a></div></div>
+    </div>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  <b>tvist<span style="color:var(--teal)">.ai</span></b> — escrow, consent &amp; dispute for AI agents ·
+  sandbox with notional credits, not a bank ·
+  built on the Tvist payments layer from the Nanda Town hackathon ·
+  <a href="/">JSON index</a> · <a href="/health">health</a>
+</div></footer>
+
+<script>
+// reveal-on-scroll + metric count-up
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  e.target.classList.add('seen');
+  e.target.querySelectorAll('.n[data-count]').forEach(el => {
+    if (el.dataset.done) return; el.dataset.done = 1;
+    const end = +el.dataset.count, t0 = performance.now(), dur = 1200;
+    const step = t => { const p = Math.min((t - t0) / dur, 1);
+      el.textContent = Math.round(end * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+}), {threshold:.18});
+document.querySelectorAll('.reveal, .metrics, .metric').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

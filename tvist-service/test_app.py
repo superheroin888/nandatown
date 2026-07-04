@@ -34,6 +34,34 @@ def test_root_lists_endpoints(client: TestClient) -> None:
     assert "POST /regions/recommend" in body["endpoints"]
 
 
+def test_root_serves_homepage_to_browsers(client: TestClient) -> None:
+    r = client.get("/", headers={"accept": "text/html,application/xhtml+xml"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "settlement-trust layer" in r.text  # the hero headline
+    assert "SKILL.md" in r.text
+
+
+def test_root_still_json_for_agents(client: TestClient) -> None:
+    # curl / agent SDK default Accept (*/*) must keep getting the JSON index.
+    r = client.get("/", headers={"accept": "*/*"})
+    assert r.headers["content-type"].startswith("application/json")
+
+
+def test_skill_md_download(client: TestClient) -> None:
+    r = client.get("/skill.md")
+    assert r.status_code == 200
+    assert "text/markdown" in r.headers["content-type"]
+    assert "# Tvist API" in r.text
+    assert "/regions/recommend" in r.text
+
+
+def test_readme_md_download(client: TestClient) -> None:
+    r = client.get("/readme.md")
+    assert r.status_code == 200
+    assert "SKILL.md" in r.text
+
+
 def test_openapi_served(client: TestClient) -> None:
     spec = client.get("/openapi.json").json()
     assert "/regions/recommend" in spec["paths"]
