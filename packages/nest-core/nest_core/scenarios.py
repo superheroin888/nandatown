@@ -109,3 +109,7 @@ def _try_load_builtin(name: str) -> None:
         from nest_core.scenarios_builtin.tvist_region import tvist_region_factory
 
         register_scenario("tvist_region", tvist_region_factory)
+    elif name == "tvist_digidoot":
+        from nest_core.scenarios_builtin.tvist_digidoot import tvist_digidoot_factory
+
+        register_scenario("tvist_digidoot", tvist_digidoot_factory)

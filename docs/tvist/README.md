@@ -154,7 +154,32 @@ irrevocable rails.
 
 ---
 
-## 4. Build steps (what landed, in order)
+## 4. Example use case — DigiDoot: a personal agent for every Indian citizen
+
+[DigiDoot](https://digidoot.in/#architecture) gives every Indian citizen a
+personal AI agent that acts on their behalf over India's Digital Public
+Infrastructure with **explicit consent**. It's the end-to-end use case for the
+whole stack: Tvist is DigiDoot's **settlement + dispute endpoint**, and its
+6-layer architecture maps straight onto Tvist —
+
+| DigiDoot layer | Tvist endpoint |
+|---|---|
+| Trust Foundation (Identity & Consent) | the **intent vault** — a consent mandate behind every agent payment |
+| Legacy Integration (UPI / NPCI) | the **`in_upi` regime** negotiated up front |
+| MCP Integration + Service Providers | the plugin's `settle_a2a` / `open_escrow` / `recall_a2a` / `open_dispute` calls |
+
+The scenario [`scenarios/tvist_digidoot.yaml`](../../scenarios/tvist_digidoot.yaml)
+runs DigiDoot's demonstrated journeys — welfare disbursement, travel booking,
+health records — plus a fraud recall, across six citizen flows. Under
+`payments: tvist` every flow is consent-bound, India-governed, and
+escrow-protected → **4/4 validators PASS**; under `payments: prepaid_credits`
+payments exceed consent, flows settle ungoverned, and undelivered services pay
+out → **the citizen protections FAIL**. Full walkthrough:
+[`examples/digidoot/README.md`](../../examples/digidoot/README.md).
+
+---
+
+## 5. Build steps (what landed, in order)
 
 1. **Plugin** —
    [`payments/tvist.py`](../../packages/nest-plugins-reference/nest_plugins_reference/payments/tvist.py):
@@ -165,15 +190,17 @@ irrevocable rails.
 2. **Scenarios** —
    [`tvist_region.py`](../../packages/nest-core/nest_core/scenarios_builtin/tvist_region.py),
    [`tvist_escrow.py`](../../packages/nest-core/nest_core/scenarios_builtin/tvist_escrow.py),
-   and
    [`tvist_disputes.py`](../../packages/nest-core/nest_core/scenarios_builtin/tvist_disputes.py),
+   and the DigiDoot use case
+   [`tvist_digidoot.py`](../../packages/nest-core/nest_core/scenarios_builtin/tvist_digidoot.py),
    registered in [`scenarios.py`](../../packages/nest-core/nest_core/scenarios.py).
    A single orchestrator owns the plugin and drives the flows (the
    `receipt_reputation` auditor pattern), emitting a `tvist:` trace-line
    protocol.
-3. **Validators** — nine adversarial checks added to
+3. **Validators** — ten adversarial checks added to
    [`validators.py`](../../packages/nest-core/nest_core/validators.py) and
-   registered under `tvist_region` / `tvist_escrow` / `tvist_disputes`.
+   registered under `tvist_region` / `tvist_escrow` / `tvist_disputes` /
+   `tvist_digidoot`.
 4. **Tests** — plugin unit + property tests
    ([`test_tvist_payments.py`](../../packages/nest-plugins-reference/tests/test_tvist_payments.py))
    and end-to-end discrimination + determinism tests
@@ -189,7 +216,7 @@ pytest` all pass.
 
 ---
 
-## 5. Run it
+## 6. Run it
 
 ```bash
 pip install -e packages/nest-core -e packages/nest-sdk -e packages/nest-plugins-reference -e packages/nest-cli
@@ -205,6 +232,10 @@ python -c "from pathlib import Path; from nest_core.validators import validate_t
 # Tvist 1.0 — evidence-gated dispute deflection (all validators PASS)
 nest run scenarios/tvist_disputes.yaml -o ./traces/tvist_disputes.jsonl
 python -c "from pathlib import Path; from nest_core.validators import validate_trace; [print(('PASS' if r.passed else 'FAIL'), r.name, '-', r.detail) for r in validate_trace(Path('traces/tvist_disputes.jsonl'),'tvist_disputes')]"
+
+# Example use case — DigiDoot: a personal agent per Indian citizen (all validators PASS)
+nest run scenarios/tvist_digidoot.yaml -o ./traces/tvist_digidoot.jsonl
+python -c "from pathlib import Path; from nest_core.validators import validate_trace; [print(('PASS' if r.passed else 'FAIL'), r.name, '-', r.detail) for r in validate_trace(Path('traces/tvist_digidoot.jsonl'),'tvist_digidoot')]"
 ```
 
 To watch the attacks land, edit any YAML and change `payments: tvist` to
@@ -213,7 +244,7 @@ flip to FAIL while conservation still holds — the precise leaks the gates clos
 
 ---
 
-## 6. Six-dimension self-assessment (judging rubric)
+## 7. Six-dimension self-assessment (judging rubric)
 
 - **Correctness** — funds conserved (property test under a 200-op random
   sequence); deterministic traces (byte-identical re-run tests).

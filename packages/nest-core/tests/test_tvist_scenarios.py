@@ -30,6 +30,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DISPUTES = _REPO_ROOT / "scenarios" / "tvist_disputes.yaml"
 _ESCROW = _REPO_ROOT / "scenarios" / "tvist_escrow.yaml"
 _REGION = _REPO_ROOT / "scenarios" / "tvist_region.yaml"
+_DIGIDOOT = _REPO_ROOT / "scenarios" / "tvist_digidoot.yaml"
 
 
 def _run(scenario_path: Path, payments: str, seed: int = 42) -> Path:
@@ -129,4 +130,32 @@ def test_region_deterministic() -> None:
     """Same seed → byte-identical region trace."""
     a = _run(_REGION, "tvist", seed=99).read_bytes()
     b = _run(_REGION, "tvist", seed=99).read_bytes()
+    assert a == b
+
+
+# ---------------------------------------------------------------------------
+# DigiDoot use case — a personal agent per Indian citizen, settled via Tvist
+# ---------------------------------------------------------------------------
+
+
+def test_digidoot_tvist_protects_every_citizen() -> None:
+    """Under ``payments: tvist`` every citizen flow is consent-bound and UPI-governed."""
+    results = _results(_run(_DIGIDOOT, "tvist"), "tvist_digidoot")
+    assert results, "no validators ran"
+    assert all(results.values()), f"unexpected failures: {results}"
+
+
+def test_digidoot_baseline_breaks_consent_regime_and_escrow() -> None:
+    """``prepaid_credits`` has no consent, no regime, no escrow → protections fail."""
+    results = _results(_run(_DIGIDOOT, "prepaid_credits"), "tvist_digidoot")
+    assert results["tvist_digidoot_consent"] is False
+    assert results["tvist_mandate"] is False
+    assert results["tvist_escrow_conditions"] is False
+    assert results["tvist_conservation"] is True
+
+
+def test_digidoot_deterministic() -> None:
+    """Same seed → byte-identical DigiDoot trace."""
+    a = _run(_DIGIDOOT, "tvist", seed=11).read_bytes()
+    b = _run(_DIGIDOOT, "tvist", seed=11).read_bytes()
     assert a == b

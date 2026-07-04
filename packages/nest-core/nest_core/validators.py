@@ -2287,6 +2287,58 @@ def validate_tvist_region_adherence(
     ]
 
 
+def validate_tvist_digidoot_consent(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """Every DigiDoot citizen transaction is India-governed and consent-bound.
+
+    The DigiDoot trust foundation in two invariants, read off the trace:
+
+    * **India regime.** Every settled flow agreed the ``in_upi`` region — the
+      citizen's jurisdiction was fixed up front, not left ungoverned.
+    * **Explicit consent.** No agent payment settled outside the citizen's consent
+      mandate (a ``tvist:mandate`` line with ``settled=1`` must have
+      ``within_consent=1``).
+
+    ``payments: tvist`` PASSES; ``payments: prepaid_credits`` FAILS (it cannot
+    negotiate the regime — every flow is ungoverned — and it pays beyond consent).
+
+    Example::
+
+        results = validate_tvist_digidoot_consent(events)
+    """
+    region_of: dict[str, str] = {}
+    for parts in _tvist_lines(events, "region"):
+        if len(parts) >= 4:
+            region_of[parts[2]] = parts[3]
+    settled = {parts[2] for parts in _tvist_lines(events, "settle") if len(parts) >= 3}
+    if not settled:
+        return [
+            ValidationResult(
+                "tvist_digidoot_consent", False, "no citizen transaction was exercised"
+            )
+        ]
+
+    problems: list[str] = []
+    for flow in sorted(settled):
+        if region_of.get(flow) != "in_upi":
+            problems.append(f"{flow}: settled outside the India/UPI regime ({region_of.get(flow)})")
+    for parts in _tvist_lines(events, "mandate"):
+        # tvist:mandate:<flow>:<agent>:<within_consent>:<settled>
+        if len(parts) >= 6 and parts[5] == "1" and parts[4] != "1":
+            problems.append(f"{parts[2]}: agent paid beyond the citizen's explicit consent")
+
+    if problems:
+        return [ValidationResult("tvist_digidoot_consent", False, "; ".join(problems))]
+    return [
+        ValidationResult(
+            "tvist_digidoot_consent",
+            True,
+            f"{len(settled)} citizen transaction(s), all India-governed and consent-bound",
+        )
+    ]
+
+
 def validate_tvist_mandate(
     events: list[dict[str, Any]],
 ) -> list[ValidationResult]:
@@ -2393,6 +2445,12 @@ VALIDATORS: dict[str, list[Any]] = {
         validate_tvist_region_agreed,
         validate_tvist_region_optimal,
         validate_tvist_region_adherence,
+        validate_tvist_conservation,
+    ],
+    "tvist_digidoot": [
+        validate_tvist_digidoot_consent,
+        validate_tvist_mandate,
+        validate_tvist_escrow_conditions,
         validate_tvist_conservation,
     ],
 }
