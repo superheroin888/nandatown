@@ -48,18 +48,42 @@ def test_root_still_json_for_agents(client: TestClient) -> None:
     assert r.headers["content-type"].startswith("application/json")
 
 
-def test_skill_md_download(client: TestClient) -> None:
+def test_skill_md_inline_view(client: TestClient) -> None:
+    # Default: clickable — renders inline in any browser, same bytes for agents.
     r = client.get("/skill.md")
     assert r.status_code == 200
-    assert "text/markdown" in r.headers["content-type"]
+    assert "text/plain" in r.headers["content-type"]
+    assert r.headers["content-disposition"] == "inline"
     assert "# Tvist API" in r.text
     assert "/regions/recommend" in r.text
 
 
-def test_readme_md_download(client: TestClient) -> None:
-    r = client.get("/readme.md")
+def test_skill_md_download(client: TestClient) -> None:
+    # ?download=1: saved as a file with the right name.
+    r = client.get("/skill.md?download=1")
     assert r.status_code == 200
-    assert "SKILL.md" in r.text
+    assert "text/markdown" in r.headers["content-type"]
+    assert r.headers["content-disposition"] == 'attachment; filename="SKILL.md"'
+    assert "# Tvist API" in r.text
+
+
+def test_readme_md_inline_and_download(client: TestClient) -> None:
+    inline = client.get("/readme.md")
+    assert inline.status_code == 200
+    assert inline.headers["content-disposition"] == "inline"
+    assert "SKILL.md" in inline.text
+    dl = client.get("/readme.md?download=1")
+    assert dl.headers["content-disposition"] == 'attachment; filename="README.md"'
+
+
+def test_view_renders_docs_for_humans(client: TestClient) -> None:
+    for doc, raw in (("skill", "/skill.md"), ("readme", "/readme.md")):
+        r = client.get(f"/view/{doc}")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/html")
+        assert f"fetch('{raw}')" in r.text          # renders the real bytes
+        assert f'{raw}?download=1' in r.text        # download button present
+    assert client.get("/view/ghost").status_code == 404
 
 
 def test_cors_open_for_browser_agents(client: TestClient) -> None:

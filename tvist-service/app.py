@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
@@ -246,22 +246,154 @@ def root(request: Request) -> HTMLResponse | dict[str, Any]:
     return _index()
 
 
-@app.get("/skill.md")
-def skill_md() -> FileResponse:
-    """Download the agent-facing SKILL.md (the one file an agent needs)."""
-    path = _HERE / "SKILL.md"
+def _md_response(filename: str, download: bool) -> Response:
+    """Serve a markdown file: inline (clickable/readable in any browser) by
+    default, or as an attachment when ``?download=1`` is passed."""
+    path = _HERE / filename
     if not path.exists():
-        raise HTTPException(404, "SKILL.md not found")
-    return FileResponse(path, media_type="text/markdown", filename="SKILL.md")
+        raise HTTPException(404, f"{filename} not found")
+    if download:
+        return Response(
+            path.read_text(),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    return Response(
+        path.read_text(),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": "inline"},
+    )
+
+
+@app.get("/skill.md")
+def skill_md(download: bool = False) -> Response:
+    """The agent-facing SKILL.md — inline view; ``?download=1`` to save it."""
+    return _md_response("SKILL.md", download)
 
 
 @app.get("/readme.md")
-def readme_md() -> FileResponse:
-    """Download the service README (run locally / deploy)."""
-    path = _HERE / "README.md"
-    if not path.exists():
-        raise HTTPException(404, "README.md not found")
-    return FileResponse(path, media_type="text/markdown", filename="README.md")
+def readme_md(download: bool = False) -> Response:
+    """The service README — inline view; ``?download=1`` to save it."""
+    return _md_response("README.md", download)
+
+
+_DOCS: dict[str, tuple[str, str]] = {
+    "skill": ("SKILL.md", "SKILL.md — the agent contract"),
+    "readme": ("README.md", "README — run & deploy"),
+}
+
+
+@app.get("/view/{doc}")
+def view_doc(doc: str) -> HTMLResponse:
+    """Human-readable rendered markdown viewer for the shipped docs.
+
+    ``/view/skill`` and ``/view/readme`` render the same bytes agents fetch from
+    ``/skill.md`` / ``/readme.md`` as styled HTML (client-side renderer) — the
+    dual-use principle applied to the docs themselves.
+    """
+    if doc not in _DOCS:
+        raise HTTPException(404, f"unknown doc {doc!r}; try /view/skill or /view/readme")
+    filename, title = _DOCS[doc]
+    raw = "/" + filename.lower()
+    return HTMLResponse(
+        _VIEWER_HTML.replace("{{TITLE}}", title)
+        .replace("{{RAW}}", raw)
+        .replace("{{FNAME}}", filename)
+    )
+
+
+_VIEWER_HTML = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} · Tvist API</title>
+<style>
+:root{--bg:#0b1020;--bg2:#101736;--card:#151d3f;--line:#26305e;--teal:#2dd4bf;
+--txt:#e6eaf6;--mut:#93a0c4;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);
+font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+a{color:var(--teal);text-decoration:none} a:hover{text-decoration:underline}
+.bar{position:sticky;top:0;background:rgba(11,16,32,.9);backdrop-filter:blur(8px);
+border-bottom:1px solid var(--line);padding:12px 22px;display:flex;gap:14px;
+align-items:center;flex-wrap:wrap}
+.bar b{font-size:15px}
+.btn{background:var(--card);border:1px solid var(--line);color:var(--txt);
+padding:6px 13px;border-radius:8px;font-size:13px;font-weight:600}
+.btn:hover{border-color:var(--teal);text-decoration:none}
+.btn.solid{background:var(--teal);color:#04241f;border-color:var(--teal)}
+main{max-width:860px;margin:0 auto;padding:34px 22px 80px}
+h1{font-size:30px;margin:26px 0 10px} h2{font-size:23px;margin:30px 0 8px;
+border-bottom:1px solid var(--line);padding-bottom:6px}
+h3{font-size:18px;margin:22px 0 6px} p{margin:10px 0;color:#c6cfe8}
+pre{background:#0a0f22;border:1px solid var(--line);border-radius:10px;
+padding:14px;font:12.5px/1.6 var(--mono);overflow-x:auto;margin:12px 0;color:#c7d2ee}
+code{font-family:var(--mono);font-size:13px;background:var(--bg2);
+border:1px solid var(--line);padding:1px 6px;border-radius:6px}
+pre code{border:none;background:none;padding:0}
+blockquote{border-left:3px solid var(--teal);background:var(--bg2);
+padding:10px 16px;border-radius:0 10px 10px 0;margin:12px 0;color:var(--mut)}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+ul,ol{margin:10px 0 10px 24px;color:#c6cfe8} li{margin:4px 0}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+</style></head><body>
+<div class="bar">
+  <a href="/">&larr; tvist<b style="color:var(--teal)">.ai</b></a>
+  <b>{{TITLE}}</b>
+  <span style="flex:1"></span>
+  <a class="btn" href="{{RAW}}">View raw</a>
+  <a class="btn solid" href="{{RAW}}?download=1">&#10515; Download {{FNAME}}</a>
+</div>
+<main id="doc"><p style="color:var(--mut)">loading {{RAW}}&hellip;</p></main>
+<script>
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function inline(s){
+  s=esc(s);
+  s=s.replace(/`([^`]+)`/g,'<code>$1</code>');
+  s=s.replace(/\\*\\*([^*]+)\\*\\*/g,'<b>$1</b>');
+  s=s.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g,'<a href="$2">$1</a>');
+  return s;
+}
+function render(md){
+  const L=md.split('\\n');const out=[];let i=0;
+  const para=/^(#{1,4} |```|\\||>|[-*] |\\d+\\. |---+$)/;
+  while(i<L.length){
+    const l=L[i];
+    if(l.startsWith('```')){const c=[];i++;
+      while(i<L.length&&!L[i].startsWith('```')){c.push(L[i]);i++}
+      i++;out.push('<pre>'+esc(c.join('\\n'))+'</pre>');continue}
+    const h=l.match(/^(#{1,4}) (.*)/);
+    if(h){out.push('<h'+h[1].length+'>'+inline(h[2])+'</h'+h[1].length+'>');i++;continue}
+    if(/^[-*] /.test(l)){const it=[];
+      while(i<L.length&&/^[-*] /.test(L[i])){it.push('<li>'+inline(L[i].slice(2))+'</li>');i++}
+      out.push('<ul>'+it.join('')+'</ul>');continue}
+    if(/^\\d+\\. /.test(l)){const it=[];
+      while(i<L.length&&/^\\d+\\. /.test(L[i])){it.push('<li>'+inline(L[i].replace(/^\\d+\\. /,''))+'</li>');i++}
+      out.push('<ol>'+it.join('')+'</ol>');continue}
+    if(l.startsWith('>')){const q=[];
+      while(i<L.length&&L[i].startsWith('>')){q.push(inline(L[i].replace(/^>\\s?/,'')));i++}
+      out.push('<blockquote>'+q.join('<br>')+'</blockquote>');continue}
+    if(l.startsWith('|')){const rows=[];
+      while(i<L.length&&L[i].startsWith('|')){rows.push(L[i]);i++}
+      const cells=r=>r.split('|').slice(1,-1).map(c=>c.trim());
+      let t='<table>';rows.forEach((r,ri)=>{
+        if(ri===1&&/^\\|[\\s:|-]+\\|?$/.test(r))return;
+        const tag=ri===0?'th':'td';
+        t+='<tr>'+cells(r).map(c=>'<'+tag+'>'+inline(c)+'</'+tag+'>').join('')+'</tr>'});
+      out.push(t+'</table>');continue}
+    if(/^---+$/.test(l.trim())){out.push('<hr>');i++;continue}
+    if(!l.trim()){i++;continue}
+    const p=[l];i++;
+    while(i<L.length&&L[i].trim()&&!para.test(L[i])){p.push(L[i]);i++}
+    out.push('<p>'+inline(p.join(' '))+'</p>');
+  }
+  return out.join('\\n');
+}
+fetch('{{RAW}}').then(r=>r.text()).then(md=>{
+  document.getElementById('doc').innerHTML=render(md);
+}).catch(e=>{document.getElementById('doc').textContent='failed to load: '+e});
+</script></body></html>"""
 
 
 def _index() -> dict[str, Any]:
@@ -273,8 +405,10 @@ def _index() -> dict[str, Any]:
         "endpoints": {
             "GET /health": "liveness",
             "GET /stats": "live service metrics (accounts, settlements, escrows, funds)",
-            "GET /skill.md": "download the agent-facing SKILL.md",
-            "GET /readme.md": "download the service README",
+            "GET /skill.md": "agent-facing SKILL.md (inline; ?download=1 for attachment)",
+            "GET /readme.md": "service README (inline; ?download=1 for attachment)",
+            "GET /view/skill": "SKILL.md rendered as HTML for humans",
+            "GET /view/readme": "README rendered as HTML for humans",
             "GET /regions": "list all jurisdictions and their dispute regimes",
             "POST /regions/recommend": "Nash-optimal region for two parties {client_prefs, agent_prefs}",
             "POST /consent": "store a spend mandate {consent_id, principal, budget, merchant_allowlist?}",
