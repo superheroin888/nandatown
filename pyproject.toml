@@ -93,6 +93,9 @@ nest-marketplace = { workspace = true }
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+# tvist-service/ is a standalone hosted app (NANDA skills track), not part of the
+# nest workspace; it has its own tests and looser style.
+extend-exclude = ["tvist-service"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "A", "SIM", "TCH"]
@@ -103,6 +106,7 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
+exclude = ["**/node_modules", "**/__pycache__", "**/.*", "tvist-service"]
 extraPaths = [
     "packages/nest-core",
     "packages/nest-sdk",
