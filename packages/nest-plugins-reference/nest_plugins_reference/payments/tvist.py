@@ -438,6 +438,7 @@ class TvistPayments:
         evidence: dict[str, dict[str, Any]] | None = None,
         intents: dict[str, IntentRecord] | None = None,
         settled_meta: dict[PaymentRef, dict[str, Any]] | None = None,
+        x402_nonces: set[str] | None = None,
     ) -> None:
         self._agent_id = agent_id
         self._balances = balances if balances is not None else {}
@@ -448,6 +449,7 @@ class TvistPayments:
         self._evidence = evidence if evidence is not None else {}
         self._intents = intents if intents is not None else {}
         self._settled_meta = settled_meta if settled_meta is not None else {}
+        self._x402_nonces: set[str] = x402_nonces if x402_nonces is not None else set()
 
     # -- balances ----------------------------------------------------------
 
@@ -885,6 +887,53 @@ class TvistPayments:
         self._credit(receipt.payer, receipt.amount.amount)
         meta["reversed"] = True
         return True
+
+    async def settle_x402(
+        self,
+        to: AgentId,
+        amount: Money,
+        ref: PaymentRef,
+        nonce: str,
+        intent_ref: str | None = None,
+    ) -> tuple[Receipt, str]:
+        """Settle an x402-style on-rail agent payment (HTTP 402 flow semantics).
+
+        Mirrors the x402 protocol on the plugin, deterministically: the payment
+        is bound to a **single-use nonce** (a replay is refused before funds
+        move), optionally capped by the principal's mandate via ``intent_ref``
+        (the consent gate holds even on-chain), and settles under the
+        ``stablecoin_x402`` regime — irrevocable, recall always refused by
+        regime; escrow and the consent cap are the protections. Returns the
+        receipt and a deterministic tx-hash (sha256 over nonce/payer/amount, so
+        the same trace replays byte-identically).
+
+        Example::
+
+            receipt, tx = await pay.settle_x402(
+                AgentId("api"), Money(amount=25), PaymentRef("x1"), nonce="n-1"
+            )
+
+        Raises:
+            ValueError: on nonce replay, mandate breach, duplicate ref, or
+                insufficient balance — always before any funds move.
+        """
+        if not nonce:
+            msg = "x402 nonce required"
+            raise ValueError(msg)
+        if nonce in self._x402_nonces:
+            msg = f"x402 nonce already used (replay rejected): {nonce}"
+            raise ValueError(msg)
+        receipt = await self.settle_a2a(
+            to,
+            amount,
+            ref,
+            rail="stablecoin_usdc",
+            intent_ref=intent_ref,
+            region="stablecoin_x402",
+        )
+        self._x402_nonces.add(nonce)
+        tx_hash = hashlib.sha256(f"{nonce}:{self._agent_id}:{amount.amount}".encode()).hexdigest()
+        return receipt, f"0x{tx_hash}"
 
     # -- programmable escrow ----------------------------------------------
 

@@ -300,6 +300,66 @@ class TestV2Escrow:
         assert pay.balance(AgentId("buyer")) == 10000
 
 
+class TestX402:
+    """x402 on-rail settlement: nonce replay, consent cap, and irrevocability."""
+
+    @pytest.mark.asyncio
+    async def test_settle_and_replay_refused(self) -> None:
+        pay = _fresh()
+        receipt, tx = await pay.settle_x402(
+            AgentId("payee"), Money(amount=25), PaymentRef("x1"), nonce="n-1"
+        )
+        assert receipt.amount.amount == 25
+        assert tx.startswith("0x") and len(tx) == 66
+        assert pay.balance(AgentId("payee")) == 25
+        # replaying the same signed nonce is refused before funds move
+        with pytest.raises(ValueError, match="replay rejected"):
+            await pay.settle_x402(AgentId("payee"), Money(amount=25), PaymentRef("x2"), nonce="n-1")
+        assert pay.balance(AgentId("payee")) == 25
+
+    @pytest.mark.asyncio
+    async def test_consent_cap_holds_on_chain(self) -> None:
+        pay = _fresh()
+        pay.store_intent(IntentRecord("cap", AgentId("buyer"), budget=10))
+        with pytest.raises(ValueError, match="exceeds agent mandate"):
+            await pay.settle_x402(
+                AgentId("payee"),
+                Money(amount=25),
+                PaymentRef("x1"),
+                nonce="n-cap",
+                intent_ref="cap",
+            )
+        # the refused payment did not consume the nonce
+        receipt, _ = await pay.settle_x402(
+            AgentId("payee"),
+            Money(amount=5),
+            PaymentRef("x2"),
+            nonce="n-cap",
+            intent_ref="cap",
+        )
+        assert receipt.amount.amount == 5
+
+    @pytest.mark.asyncio
+    async def test_x402_settlement_is_irrevocable(self) -> None:
+        pay = _fresh()
+        await pay.settle_x402(AgentId("payee"), Money(amount=25), PaymentRef("x1"), nonce="n-i")
+        # even a genuine mandate breach cannot recall on this regime
+        pay.store_intent(IntentRecord("tiny", AgentId("buyer"), budget=1))
+        assert pay.recall_a2a(PaymentRef("x1"), "tiny") is False
+        with pytest.raises(ValueError, match="Irrevocable"):
+            await pay.refund(PaymentRef("x1"))
+
+    @pytest.mark.asyncio
+    async def test_tx_hash_is_deterministic(self) -> None:
+        _, tx_a = await _fresh().settle_x402(
+            AgentId("payee"), Money(amount=25), PaymentRef("x1"), nonce="n-d"
+        )
+        _, tx_b = await _fresh().settle_x402(
+            AgentId("payee"), Money(amount=25), PaymentRef("x1"), nonce="n-d"
+        )
+        assert tx_a == tx_b  # same inputs → identical hash: replay-safe traces
+
+
 class TestConservation:
     """Total funds (balances + escrow holds) are invariant under any op sequence."""
 
