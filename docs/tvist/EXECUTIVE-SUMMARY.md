@@ -64,6 +64,21 @@ transaction:
    — unilateral clawbacks are refused, which is exactly what irrevocable-rail
    rulebooks require.
 
+Two capabilities complete the layer:
+
+- **Grounded in law, per jurisdiction.** Every dispute code maps to one of 7
+  civil/commercial-law categories (non-performance, non-conformity,
+  fraud/unauthorized, agency/mandate, unjust enrichment, procedural recall,
+  continuing obligations), and every jurisdiction carries its operative
+  statutes, scheme rulebooks, and regulator with links to the official source
+  (eur-lex, legislation.gov.uk, BCB, eCFR, NPCI/RBI, riksdagen …). An accepted
+  dispute returns the **citation string inline**, selected by the region's
+  legal tradition — BGB §177 falsus procurator in Brazil, UCC §2-711 in India.
+- **x402 on-rail agent payments.** The HTTP-native rail agents pay with: 402
+  challenge → signed `X-PAYMENT` (EIP-3009-shaped) → resource + settlement
+  receipt, with facilitator verify/settle. Replay-safe, and the principal's
+  consent cap is enforced **even on this irrevocable on-chain rail**.
+
 The result for each party: principals can safely delegate spend; agents can
 transact with counterparties they've never met; providers ship against locked
 funds; platforms get one dispute taxonomy instead of N.
@@ -81,7 +96,7 @@ funds; platforms get one dispute taxonomy instead of N.
    │  4. RESOLUTION LAYER     regime-gated recall · dispute taxonomy    │
    └────────────────────────────────────────────────────────────────────┘
                     |                          |
-        custody partners (funds)      rails: Pix · SEPA · FedNow · UPI …
+        custody partners (funds)    rails: Pix · SEPA · FedNow · UPI · x402 …
 ```
 
 Every operation is deterministic and conservation-checked (balances + escrow
@@ -95,8 +110,9 @@ holds are invariant), so the whole system is auditable by replay.
   spend, friendly-fraud refund, off-regime dispute) **fails against the default
   ledger and is blocked by Tvist** on identical scenarios. 535 tests green.
 - **Live, dual-use service.** The same logic runs as a hosted API + animated
-  site with an in-page playground; agents integrate from a single SKILL.md
-  (39 endpoint tests green).
+  site with an in-page playground; agents integrate from a single SKILL.md —
+  25 endpoints incl. the legal-taxonomy and x402 surfaces (49 endpoint tests
+  green; 584 tests green across the project).
 - **Flagship use case.** DigiDoot — "a personal AI agent for every Indian
   citizen" — maps 1:1 onto Tvist as its settlement endpoint: Aadhaar-style
   consent → intent vault, UPI → regime, service journeys → escrow/recall.
@@ -109,3 +125,10 @@ to agent platforms (we're the trust layer their checkout protocols defer). The
 wedge is the cross-section nobody owns — and it compounds: every new rail,
 protocol, and jurisdiction added to the registry makes the layer harder to
 replicate.
+
+---
+
+*Disclaimer: technical demonstration — a notional-credits sandbox, not a bank,
+payment institution, or law firm. Legal references cite real primary sources
+but are not legal advice; obtain qualified local counsel before relying on
+them in any jurisdiction.*
