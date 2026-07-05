@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>ai.tvist.api</string>
+  <key>ProgramArguments</key><array>
+    <string>/Users/storvdn/nandatown-src/.venv/bin/python</string>
+    <string>-m</string><string>uvicorn</string><string>app:app</string>
+    <string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8077</string>
+    <string>--log-level</string><string>warning</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/storvdn/nandatown-src/tvist-service</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/storvdn/Library/Logs/tvist-api.log</string>
+  <key>StandardErrorPath</key><string>/Users/storvdn/Library/Logs/tvist-api.log</string>
+</dict></plist>

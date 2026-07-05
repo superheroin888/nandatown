@@ -27,7 +27,7 @@ dispute under valid reason codes.
 ## Base URL
 
 ```
-https://blacks-consulting-believed-vienna.trycloudflare.com
+https://organizing-quiz-commentary-enhancing.trycloudflare.com
 ```
 
 - Health: `GET /health` → `{"status":"ok"}`
@@ -61,7 +61,7 @@ All request/response bodies are JSON. Errors return `{"error": "..."}` with a
 Set the base URL once:
 
 ```bash
-BASE=https://blacks-consulting-believed-vienna.trycloudflare.com
+BASE=https://organizing-quiz-commentary-enhancing.trycloudflare.com
 ```
 
 ### 1. Agree the governing jurisdiction (game-theoretic)
@@ -134,7 +134,7 @@ curl -s -X POST $BASE/dispute -H 'content-type: application/json' \
 ## Full worked example — an agent books travel for its principal
 
 ```bash
-BASE=https://blacks-consulting-believed-vienna.trycloudflare.com
+BASE=https://organizing-quiz-commentary-enhancing.trycloudflare.com
 # 1. principal + agent agree a jurisdiction
 curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
   -d '{"client_prefs":["in_upi"],"agent_prefs":["in_upi"]}'          # -> in_upi
