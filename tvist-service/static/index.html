@@ -129,6 +129,7 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
     <a class="item" href="#pain">Pain points</a>
     <a class="item" href="#arch">Architecture</a>
     <a class="item" href="#components">Components</a>
+    <a class="item" href="#law">Legal</a>
     <a class="item" href="#personas">Personas</a>
     <a class="item" href="#usecases">Use cases</a>
     <a class="item" href="#api">API</a>
@@ -387,6 +388,39 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
   </div>
 </section>
 
+<!-- LEGAL TAXONOMY -->
+<section id="law">
+  <div class="wrap reveal">
+    <div class="kicker">Legal taxonomy · live from GET /taxonomy</div>
+    <h2>Every dispute code is grounded in civil &amp; commercial law</h2>
+    <p class="sub">Tvist's reason codes aren't arbitrary strings — each maps to a substantive
+    legal category with its civil-law and common-law doctrinal basis, and every one of the 22
+    jurisdictions carries its <b>operative statutes, scheme rulebooks, and regulator</b> with
+    links to the official legal source. Agents cite the <code>operative_basis</code> when they
+    file; humans can verify every claim at the primary source.</p>
+
+    <div class="grid g2" style="margin-top:26px">
+      <div class="card">
+        <span class="tag i">Live · GET /regions/{region}/legal</span>
+        <h3>⚖️ Jurisdiction law explorer</h3>
+        <p>Pick a jurisdiction — its legal system, regulator, official instruments
+        (clickable, primary sources), and how each dispute code is legally grounded there.</p>
+        <label for="lawsel">Jurisdiction</label>
+        <select id="lawsel" onchange="showLaw()"><option>loading…</option></select>
+        <div class="result" id="lawout" style="min-height:60px"></div>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoLegal)">▶ Fetch in console (agent view)</button></div>
+      </div>
+      <div class="card">
+        <span class="tag i">Live · GET /taxonomy</span>
+        <h3>📚 The seven legal categories</h3>
+        <p>Reason codes → substantive law, hydrated live from the taxonomy endpoint:</p>
+        <div class="result" id="taxout" style="min-height:60px;color:var(--mut)">loading /taxonomy…</div>
+      </div>
+    </div>
+    <div id="lawinstr" class="grid g3" style="margin-top:16px"></div>
+  </div>
+</section>
+
 <!-- PERSONAS -->
 <section id="personas">
   <div class="wrap reveal">
@@ -569,6 +603,7 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
       <a class="f" href="#pain">Pain points</a>
       <a class="f" href="#arch">Architecture &amp; flow</a>
       <a class="f" href="#components">Key components</a>
+      <a class="f" href="#law">Legal taxonomy</a>
       <a class="f" href="#personas">Personas</a>
       <a class="f" href="#usecases">Use cases</a>
     </div>
@@ -585,6 +620,7 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
       <a class="f" href="/health">/health — liveness</a>
       <a class="f" href="/stats">/stats — live metrics</a>
       <a class="f" href="/regions">/regions — all regimes</a>
+      <a class="f" href="/taxonomy">/taxonomy — dispute law map</a>
     </div>
     <div>
       <h3>Deliverables</h3>
@@ -700,9 +736,53 @@ async function refreshStats(){
     sel.innerHTML = Object.entries(rj.regions)
       .map(([k, r]) => `<option value="${k}">${esc(r.label)}</option>`).join('');
     sel.value = 'br_pix'; showRegion();
+    const lsel = document.getElementById('lawsel');
+    lsel.innerHTML = sel.innerHTML;
+    lsel.value = 'br_pix'; showLaw();
   }catch(e){ document.getElementById('regout').textContent = 'could not load /regions'; }
+  try{
+    const tax = await (await fetch('/taxonomy')).json();
+    window._tax = tax;
+    document.getElementById('taxout').innerHTML = Object.entries(tax.categories)
+      .map(([k, c]) => `<div style="margin-bottom:7px"><b style="color:var(--txt)">${esc(c.label)}</b>` +
+        `<span style="color:var(--mut)"> — ${esc(c.description)} ` +
+        `<i>${Object.entries(tax.reason_codes).filter(([,v]) => v.category === k)
+             .map(([code]) => '<code>' + esc(code) + '</code>').join(' ')}</i></span></div>`)
+      .join('');
+  }catch(e){ document.getElementById('taxout').textContent = 'could not load /taxonomy'; }
   refreshStats();
 })();
+
+// ---- legal taxonomy explorer (GET /regions/{r}/legal) --------------------------
+async function showLaw(){
+  const k = document.getElementById('lawsel').value;
+  const out = document.getElementById('lawout'), grid = document.getElementById('lawinstr');
+  out.className = 'result'; out.textContent = `loading /regions/${k}/legal…`;
+  try{
+    const d = await (await fetch(`/regions/${k}/legal`)).json();
+    out.className = 'result';
+    out.innerHTML =
+      `<b style="color:var(--txt)">${esc(d.label)}</b><br>` +
+      `legal system: <b style="color:var(--teal)">${esc(d.legal_system)}</b>` +
+      ` · regulator: ${esc(d.regulator)}<br>` +
+      `recall: <span class="${d.recall_allowed ? 'ok' : 'no'}">${d.recall_allowed ? 'allowed' : 'FORBIDDEN'}</span>` +
+      (d.recall_window_ticks ? ` (window ${d.recall_window_ticks})` : '') + `<br><br>` +
+      d.reason_code_linkage.map(l =>
+        `<code>${esc(l.reason_code)}</code> → <b style="color:var(--txt)">${esc(l.label)}</b>` +
+        `<br><span style="color:var(--mut);font-size:12px">${esc(l.operative_basis)}</span>`
+      ).join('<br>');
+    grid.innerHTML = d.instruments.map(i =>
+      `<div class="card"><span class="tag a">${esc(i.role)}</span>` +
+      `<h3 style="font-size:14.5px"><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.name)} ↗</a></h3>` +
+      `<p style="font-family:var(--mono);font-size:12px">${esc(i.citation)}</p></div>`).join('');
+  }catch(e){ out.className = 'result bad'; out.textContent = String(e); }
+}
+async function demoLegal(){
+  const k = document.getElementById('lawsel') ? document.getElementById('lawsel').value : 'in_upi';
+  note(`── LEGAL · jurisdiction law for ${k} (what an agent cites) ──`);
+  await call('GET', `/regions/${k}/legal`);
+  await call('GET', '/taxonomy');
+}
 
 function showRegion(){
   const k = document.getElementById('regsel').value, r = (window._regions||{})[k];

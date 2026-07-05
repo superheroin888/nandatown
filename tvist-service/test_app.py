@@ -76,6 +76,58 @@ def test_readme_md_inline_and_download(client: TestClient) -> None:
     assert dl.headers["content-disposition"] == 'attachment; filename="README.md"'
 
 
+def test_taxonomy_covers_all_codes_and_regions(client: TestClient) -> None:
+    t = client.get("/taxonomy").json()
+    assert len(t["categories"]) == 7
+    # every category cites both traditions
+    for c in t["categories"].values():
+        assert c["civil_law_basis"] and c["common_law_basis"]
+    # all 10 canonical reason codes are categorized
+    assert len(t["reason_codes"]) == 10
+    for v in t["reason_codes"].values():
+        assert v["category"] in t["categories"]
+    # every one of the 22 regions is linked, and each of its codes is mapped
+    assert len(t["regions"]) == 22
+    for r in t["regions"].values():
+        assert r["legal_system"]
+        for cat in r["reason_codes"].values():
+            assert cat in t["categories"]
+
+
+def test_region_legal_sources_are_official(client: TestClient) -> None:
+    # spot-check three legal traditions
+    for region, system_hint, instrument_hint in (
+        ("br_pix", "civil", "Resolução BCB"),
+        ("us_fednow", "common", "12 CFR"),
+        ("in_upi", "common", "Payment and Settlement Systems Act"),
+    ):
+        d = client.get(f"/regions/{region}/legal").json()
+        assert system_hint in d["legal_system"]
+        assert d["regulator"]
+        assert any(instrument_hint in i["citation"] or instrument_hint in i["name"]
+                   for i in d["instruments"])
+        # every instrument links to a source and states its role
+        for i in d["instruments"]:
+            assert i["url"].startswith("http") and i["citation"] and i["role"]
+        # every accepted reason code carries an operative legal basis
+        assert d["reason_code_linkage"]
+        for link in d["reason_code_linkage"]:
+            assert link["operative_basis"] and link["category"]
+    # agentic dispute grounds in agency/mandate law where accepted
+    d = client.get("/regions/eu_sepa/legal").json()
+    agency = [x for x in d["reason_code_linkage"] if x["reason_code"] == "agent_exceeded_mandate"]
+    assert agency and agency[0]["category"] == "agency_mandate"
+    assert client.get("/regions/atlantis/legal").status_code == 404
+
+
+def test_homepage_legal_section_wired(client: TestClient) -> None:
+    html = client.get("/", headers={"accept": "text/html"}).text
+    assert 'id="law"' in html
+    assert "fetch('/taxonomy')" in html          # category legend hydrates live
+    assert "/legal" in html                      # jurisdiction explorer endpoint
+    assert "showLaw()" in html and "demoLegal" in html
+
+
 def test_view_renders_docs_for_humans(client: TestClient) -> None:
     for doc, raw in (("skill", "/skill.md"), ("readme", "/readme.md")):
         r = client.get(f"/view/{doc}")
@@ -122,7 +174,8 @@ def test_homepage_navigation_is_wired(client: TestClient) -> None:
     assert 'id="menu"' in html
     assert "toggleMenu()" in html
     # every nav item points at a real section id on the page
-    for sec in ("pain", "arch", "components", "personas", "usecases", "api", "try", "downloads"):
+    for sec in ("pain", "arch", "components", "law", "personas", "usecases", "api", "try",
+                "downloads"):
         assert f'href="#{sec}"' in html
         assert f'id="{sec}"' in html
     # scrollspy + back-to-top logic present

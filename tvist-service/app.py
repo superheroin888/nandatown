@@ -130,6 +130,400 @@ def recommend_region(client_prefs: list[str], agent_prefs: list[str]) -> str | N
 
 
 # ---------------------------------------------------------------------------
+# Legal dispute taxonomy — civil & commercial law grounding
+# ---------------------------------------------------------------------------
+# Every canonical reason code maps to a substantive legal category with its
+# civil-law and common-law doctrinal basis. Every jurisdiction carries its real
+# legal instruments (statute / scheme rulebook / regulator) with links to the
+# official source, so a dispute filed under a region is traceable to the law
+# that actually governs it there.
+
+LEGAL_CATEGORIES: dict[str, dict[str, str]] = {
+    "non_performance": {
+        "label": "Non-performance (non-delivery)",
+        "description": "Seller/provider failed to perform the primary obligation.",
+        "civil_law_basis": "Breach of obligation to perform: BGB §§275, 323 (DE); "
+                           "Code civil arts. 1217, 1610 (FR); CISG arts. 30, 45, 49.",
+        "common_law_basis": "Breach of contract; total failure of consideration; "
+                            "UCC §2-711 buyer's remedies (US).",
+    },
+    "non_conformity": {
+        "label": "Non-conformity (defective performance)",
+        "description": "Delivered, but not as described / not of contractual quality.",
+        "civil_law_basis": "Conformity of goods: Directive (EU) 2019/771; CISG art. 35; "
+                           "vices cachés, Code civil art. 1641 (FR).",
+        "common_law_basis": "Implied terms: Consumer Rights Act 2015 ss. 9–11 (UK); "
+                            "UCC §§2-314/2-315 warranties (US).",
+    },
+    "fraud_unauthorized": {
+        "label": "Fraud / unauthorized transaction",
+        "description": "Payment procured by deception or executed without authority.",
+        "civil_law_basis": "Dol / dolus vitiating consent (Code civil art. 1137); "
+                           "PSD2 arts. 64, 73–74 unauthorized-transaction liability.",
+        "common_law_basis": "Tort of deceit / fraudulent misrepresentation; "
+                            "EFTA + Regulation E, 12 CFR 1005 (US consumer EFT).",
+    },
+    "agency_mandate": {
+        "label": "Agency / mandate (excess of authority)",
+        "description": "An agent acted outside the principal's mandate — the core "
+                       "agentic-commerce dispute.",
+        "civil_law_basis": "Mandate & representation: BGB §§164–181 (falsus procurator "
+                           "§177); Code civil arts. 1153–1161, 1984 ff.; CO art. 394 ff. (CH).",
+        "common_law_basis": "Actual vs apparent authority, ratification: Restatement "
+                            "(Third) of Agency (US); Indian Contract Act 1872 ss. 182–238.",
+    },
+    "unjust_enrichment": {
+        "label": "Mistaken payment (unjust enrichment)",
+        "description": "Value transferred without legal ground — wrong payee or amount.",
+        "civil_law_basis": "Condictio indebiti: BGB §812; Code civil art. 1302 "
+                           "(paiement de l'indu); CO arts. 62 ff. (CH).",
+        "common_law_basis": "Restitution for mistaken payment (Barclays Bank v W.J. "
+                            "Simms [1980]); unjust enrichment.",
+    },
+    "procedural_recall": {
+        "label": "Procedural recall (scheme remedy)",
+        "description": "Rulebook-level return/recovery procedure of the rail itself — "
+                       "lex specialis layered over the substantive claim.",
+        "civil_law_basis": "Scheme rulebooks as incorporated contract terms: EPC SCT "
+                           "Inst Rulebook recall; Pix MED under Resolução BCB 1/2020.",
+        "common_law_basis": "Operating rules as binding multilateral contract: Reg J "
+                            "subpart C / UCC 4A-211 (US); Pay.UK / TCH rules.",
+    },
+    "continuing_obligations": {
+        "label": "Recurring / continuing obligations",
+        "description": "Disputes over subscriptions and repeated charges.",
+        "civil_law_basis": "Termination of continuing obligations: BGB §314; consumer "
+                           "withdrawal, Directive 2011/83/EU.",
+        "common_law_basis": "Cancellation & preauthorized-transfer stops: Reg E, "
+                            "12 CFR 1005.10 (US); contract termination at common law.",
+    },
+}
+
+REASON_LEGAL: dict[str, str] = {
+    "goods_not_received": "non_performance",
+    "not_as_described": "non_conformity",
+    "fraud": "fraud_unauthorized",
+    "recurring_disputed": "continuing_obligations",
+    "agent_exceeded_mandate": "agency_mandate",
+    "verifiable_intent_mismatch": "agency_mandate",
+    "recall_request": "procedural_recall",
+    "mistaken_payment": "unjust_enrichment",
+    "sepa_recall": "procedural_recall",
+    "pix_med_return": "procedural_recall",
+}
+
+# Per-jurisdiction legal sources: legal system, regulator, and the operative
+# instruments (payments law, scheme rulebook, consumer/civil law) with links to
+# the official publication source for each country/region.
+LEGAL_SOURCES: dict[str, dict[str, Any]] = {
+    "global": {
+        "legal_system": "transnational (lex mercatoria)",
+        "regulator": "none — party autonomy / chosen law",
+        "instruments": [
+            {"name": "UN Convention on Contracts for the International Sale of Goods (CISG)",
+             "citation": "1489 UNTS 3 (1980)", "role": "sales law",
+             "url": "https://uncitral.un.org/en/texts/salegoods/conventions/sale_of_goods/cisg"},
+            {"name": "UNIDROIT Principles of International Commercial Contracts",
+             "citation": "UPICC 2016", "role": "contract law",
+             "url": "https://www.unidroit.org/instruments/commercial-contracts/unidroit-principles-2016/"},
+            {"name": "UNCITRAL Model Law on Electronic Commerce",
+             "citation": "1996", "role": "e-commerce",
+             "url": "https://uncitral.un.org/en/texts/ecommerce/modellaw/electronic_commerce"},
+        ],
+    },
+    "eu_sepa": {
+        "legal_system": "civil law (EU acquis)",
+        "regulator": "ECB / EBA + national competent authorities",
+        "instruments": [
+            {"name": "Payment Services Directive 2 (PSD2)",
+             "citation": "Directive (EU) 2015/2366", "role": "payments law",
+             "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32015L2366"},
+            {"name": "Instant Payments Regulation",
+             "citation": "Regulation (EU) 2024/886", "role": "instant credit transfers",
+             "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R0886"},
+            {"name": "EPC SCT Instant Rulebook (recall procedures)",
+             "citation": "EPC 004-16", "role": "scheme rulebook",
+             "url": "https://www.europeanpaymentscouncil.eu/document-library/rulebooks"},
+            {"name": "Sale of Goods Directive (conformity)",
+             "citation": "Directive (EU) 2019/771", "role": "consumer/commercial law",
+             "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32019L0771"},
+        ],
+    },
+    "uk_fps": {
+        "legal_system": "common law",
+        "regulator": "FCA / Payment Systems Regulator (PSR)",
+        "instruments": [
+            {"name": "Payment Services Regulations 2017",
+             "citation": "SI 2017/752", "role": "payments law",
+             "url": "https://www.legislation.gov.uk/uksi/2017/752/contents"},
+            {"name": "PSR APP-fraud mandatory reimbursement (FPS)",
+             "citation": "PSR Specific Direction 20 (2024)", "role": "scheme remedy",
+             "url": "https://www.psr.org.uk/our-work/app-scams/"},
+            {"name": "Consumer Rights Act 2015",
+             "citation": "c. 15, ss. 9–11", "role": "consumer/commercial law",
+             "url": "https://www.legislation.gov.uk/ukpga/2015/15/contents"},
+        ],
+    },
+    "nordic": {
+        "legal_system": "civil law (Nordic)",
+        "regulator": "Finansinspektionen (SE); ARN for consumer ADR",
+        "instruments": [
+            {"name": "Betaltjänstlag (Swedish Payment Services Act)",
+             "citation": "SFS 2010:751", "role": "payments law",
+             "url": "https://www.riksdagen.se/sv/dokument-och-lagar/dokument/svensk-forfattningssamling/lag-2010751-om-betaltjanster_sfs-2010-751/"},
+            {"name": "Konsumentköplag (Consumer Sales Act)",
+             "citation": "SFS 2022:260", "role": "consumer/commercial law",
+             "url": "https://www.riksdagen.se/sv/dokument-och-lagar/dokument/svensk-forfattningssamling/konsumentkoplag-2022260_sfs-2022-260/"},
+            {"name": "Konsumentkreditlag §29 (connected-credit claims vs BNPL)",
+             "citation": "SFS 2010:1846", "role": "BNPL dispute basis",
+             "url": "https://www.riksdagen.se/sv/dokument-och-lagar/dokument/svensk-forfattningssamling/konsumentkreditlag-20101846_sfs-2010-1846/"},
+        ],
+    },
+    "ch_twint": {
+        "legal_system": "civil law",
+        "regulator": "FINMA / SNB oversight",
+        "instruments": [
+            {"name": "Swiss Code of Obligations (mandate art. 394 ff.; unjust enrichment art. 62 ff.)",
+             "citation": "SR 220", "role": "civil/commercial law",
+             "url": "https://www.fedlex.admin.ch/eli/cc/27/317_321_377/en"},
+            {"name": "TWINT scheme terms (participant rules)",
+             "citation": "TWINT AG", "role": "scheme rulebook",
+             "url": "https://www.twint.ch/en/legal/"},
+        ],
+    },
+    "br_pix": {
+        "legal_system": "civil law",
+        "regulator": "Banco Central do Brasil (BCB)",
+        "instruments": [
+            {"name": "Regulamento do Pix (incl. Mecanismo Especial de Devolução, MED)",
+             "citation": "Resolução BCB nº 1/2020 (as amended)", "role": "scheme rulebook + recall",
+             "url": "https://www.bcb.gov.br/estabilidadefinanceira/pix"},
+            {"name": "Código de Defesa do Consumidor",
+             "citation": "Lei nº 8.078/1990", "role": "consumer law",
+             "url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm"},
+            {"name": "Código Civil (contract, mandate arts. 653 ff., enrichment art. 884)",
+             "citation": "Lei nº 10.406/2002", "role": "civil/commercial law",
+             "url": "https://www.planalto.gov.br/ccivil_03/leis/2002/l10406compilada.htm"},
+        ],
+    },
+    "mx_spei": {
+        "legal_system": "civil law",
+        "regulator": "Banco de México / CONDUSEF",
+        "instruments": [
+            {"name": "Circular 14/2017 (SPEI operating rules)",
+             "citation": "Banxico Circular 14/2017", "role": "scheme rulebook",
+             "url": "https://www.banxico.org.mx/marco-normativo/normativa-emitida-por-el-banco-de-mexico/circular-14-2017/"},
+            {"name": "Ley de Protección y Defensa al Usuario de Servicios Financieros",
+             "citation": "DOF 18-01-1999 (as amended)", "role": "consumer financial law",
+             "url": "https://www.diputados.gob.mx/LeyesBiblio/ref/lpdusf.htm"},
+        ],
+    },
+    "us_fednow": {
+        "legal_system": "common law (UCC)",
+        "regulator": "Federal Reserve / CFPB (consumer)",
+        "instruments": [
+            {"name": "Regulation J, Subpart C (funds transfers through Fedwire/FedNow, "
+                     "incorporating UCC Article 4A)",
+             "citation": "12 CFR Part 210", "role": "payments law",
+             "url": "https://www.ecfr.gov/current/title-12/chapter-II/subchapter-A/part-210"},
+            {"name": "FedNow Service Operating Procedures",
+             "citation": "FRB Services", "role": "scheme rulebook",
+             "url": "https://www.frbservices.org/financial-services/fednow"},
+            {"name": "EFTA + Regulation E (consumer EFT error resolution)",
+             "citation": "12 CFR Part 1005", "role": "consumer law",
+             "url": "https://www.ecfr.gov/current/title-12/chapter-X/part-1005"},
+        ],
+    },
+    "us_rtp": {
+        "legal_system": "common law (UCC)",
+        "regulator": "OCC/Fed oversight of TCH; CFPB (consumer)",
+        "instruments": [
+            {"name": "TCH RTP System Operating Rules (request for return of funds)",
+             "citation": "The Clearing House", "role": "scheme rulebook",
+             "url": "https://www.theclearinghouse.org/payment-systems/rtp/institution"},
+            {"name": "UCC Article 4A (funds transfers)",
+             "citation": "UCC art. 4A", "role": "payments law",
+             "url": "https://www.law.cornell.edu/ucc/4A"},
+        ],
+    },
+    "ca_interac": {
+        "legal_system": "common law (Quebec: civil law)",
+        "regulator": "Bank of Canada / Payments Canada; FCAC (consumer)",
+        "instruments": [
+            {"name": "Canadian Payments Act",
+             "citation": "R.S.C. 1985, c. C-21", "role": "payments law",
+             "url": "https://laws-lois.justice.gc.ca/eng/acts/c-21/"},
+            {"name": "Payments Canada rules / Real-Time Rail framework",
+             "citation": "Payments Canada", "role": "scheme rulebook",
+             "url": "https://www.payments.ca/systems-services/payment-systems"},
+        ],
+    },
+    "in_upi": {
+        "legal_system": "common law",
+        "regulator": "RBI / NPCI",
+        "instruments": [
+            {"name": "Payment and Settlement Systems Act, 2007",
+             "citation": "Act 51 of 2007", "role": "payments law",
+             "url": "https://www.indiacode.nic.in/handle/123456789/2063"},
+            {"name": "NPCI UPI Procedural Guidelines + UDIR (online dispute resolution)",
+             "citation": "NPCI circulars", "role": "scheme rulebook + ODR",
+             "url": "https://www.npci.org.in/what-we-do/upi/circular"},
+            {"name": "Indian Contract Act, 1872 (agency, ss. 182–238)",
+             "citation": "Act 9 of 1872", "role": "mandate/agency law",
+             "url": "https://www.indiacode.nic.in/handle/123456789/2187"},
+            {"name": "RBI Integrated Ombudsman Scheme (RB-IOS)",
+             "citation": "RBI, 2021", "role": "consumer redress",
+             "url": "https://rbi.org.in/Scripts/AboutUsDisplay.aspx?pg=IntegratedOmbudsman.htm"},
+        ],
+    },
+    "sg_fast": {
+        "legal_system": "common law",
+        "regulator": "MAS",
+        "instruments": [
+            {"name": "Payment Services Act 2019",
+             "citation": "No. 2 of 2019", "role": "payments law",
+             "url": "https://sso.agc.gov.sg/Act/PSA2019"},
+            {"name": "MAS E-Payments User Protection Guidelines + Shared Responsibility Framework",
+             "citation": "MAS Guidelines", "role": "consumer protection / scam losses",
+             "url": "https://www.mas.gov.sg/regulation/guidelines/e-payments-user-protection-guidelines"},
+        ],
+    },
+    "au_npp": {
+        "legal_system": "common law",
+        "regulator": "RBA / ASIC; AFCA for ADR",
+        "instruments": [
+            {"name": "ePayments Code",
+             "citation": "ASIC, 2022 update", "role": "consumer payments code",
+             "url": "https://asic.gov.au/regulatory-resources/financial-services/epayments-code/"},
+            {"name": "NPP Regulations and Procedures",
+             "citation": "NPP Australia", "role": "scheme rulebook",
+             "url": "https://nppa.com.au/the-platform/npp-regulations/"},
+            {"name": "Australian Consumer Law (consumer guarantees)",
+             "citation": "Sch 2, Competition and Consumer Act 2010", "role": "commercial law",
+             "url": "https://www.legislation.gov.au/C2004A00109/latest/text"},
+        ],
+    },
+    "jp_zengin": {
+        "legal_system": "civil law",
+        "regulator": "FSA / BOJ oversight",
+        "instruments": [
+            {"name": "Civil Code (mandate arts. 643 ff.; unjust enrichment art. 703)",
+             "citation": "Act No. 89 of 1896", "role": "civil law",
+             "url": "https://www.japaneselawtranslation.go.jp/en/laws/view/3494"},
+            {"name": "Payment Services Act",
+             "citation": "Act No. 59 of 2009", "role": "payments law",
+             "url": "https://www.japaneselawtranslation.go.jp/en/laws/view/3078"},
+            {"name": "Zengin System rules (Japanese Banks' Payment Clearing Network)",
+             "citation": "Zengin-Net", "role": "scheme rulebook",
+             "url": "https://www.zengin-net.jp/en/"},
+        ],
+    },
+    "hk_fps": {
+        "legal_system": "common law",
+        "regulator": "HKMA",
+        "instruments": [
+            {"name": "Payment Systems and Stored Value Facilities Ordinance",
+             "citation": "Cap. 584", "role": "payments law",
+             "url": "https://www.elegislation.gov.hk/hk/cap584"},
+            {"name": "Sale of Goods Ordinance",
+             "citation": "Cap. 26", "role": "commercial law",
+             "url": "https://www.elegislation.gov.hk/hk/cap26"},
+        ],
+    },
+    "ae_aani": {
+        "legal_system": "civil law (with Sharia influence)",
+        "regulator": "CBUAE / Al Etihad Payments",
+        "instruments": [
+            {"name": "Civil Transactions Law (agency/wakala)",
+             "citation": "Federal Law No. 5 of 1985", "role": "civil law",
+             "url": "https://uaelegislation.gov.ae/en/legislations/1025"},
+            {"name": "Retail Payment Services and Card Schemes Regulation",
+             "citation": "CBUAE Circular 15/2021", "role": "payments law",
+             "url": "https://rulebook.centralbank.ae/en/rulebook/retail-payment-services-and-card-schemes-regulation"},
+        ],
+    },
+    "sa_sarie": {
+        "legal_system": "Sharia + codified civil law",
+        "regulator": "SAMA",
+        "instruments": [
+            {"name": "Civil Transactions Law (first Saudi civil code)",
+             "citation": "Royal Decree M/191 of 2023", "role": "civil law",
+             "url": "https://laws.boe.gov.sa/BoeLaws/Laws/LawDetails/6f4d76f7-d3f6-4b39-9c00-b0440e5d2b26/1"},
+            {"name": "Payment Services Provider Regulations",
+             "citation": "SAMA, 2020", "role": "payments law",
+             "url": "https://www.sama.gov.sa/en-US/Laws/Pages/BankingRulesAndRegulations.aspx"},
+        ],
+    },
+    "za_payshap": {
+        "legal_system": "mixed (Roman-Dutch / common law)",
+        "regulator": "SARB / PASA",
+        "instruments": [
+            {"name": "National Payment System Act",
+             "citation": "Act 78 of 1998", "role": "payments law",
+             "url": "https://www.resbank.co.za/en/home/what-we-do/payments-and-settlements/regulation-oversight-and-supervision"},
+            {"name": "Consumer Protection Act",
+             "citation": "Act 68 of 2008", "role": "consumer law",
+             "url": "https://www.gov.za/documents/consumer-protection-act"},
+        ],
+    },
+    "ng_nip": {
+        "legal_system": "common law",
+        "regulator": "CBN / NIBSS",
+        "instruments": [
+            {"name": "CBN Guidelines on Electronic Payments and instant transfers",
+             "citation": "CBN circulars", "role": "payments regulation",
+             "url": "https://www.cbn.gov.ng/PaymentsSystem/"},
+            {"name": "Federal Competition and Consumer Protection Act",
+             "citation": "FCCPA 2018", "role": "consumer law",
+             "url": "https://fccpc.gov.ng/laws-regulations/"},
+        ],
+    },
+    "ke_mpesa": {
+        "legal_system": "common law",
+        "regulator": "Central Bank of Kenya",
+        "instruments": [
+            {"name": "National Payment System Act + NPS Regulations 2014",
+             "citation": "No. 39 of 2011", "role": "payments law",
+             "url": "https://www.centralbank.go.ke/national-payments-system/"},
+            {"name": "Consumer Protection Act",
+             "citation": "No. 46 of 2012", "role": "consumer law",
+             "url": "http://kenyalaw.org/kl/fileadmin/pdfdownloads/Acts/ConsumerProtectionAct_No46of2012.pdf"},
+        ],
+    },
+    "cn_ibps": {
+        "legal_system": "civil law",
+        "regulator": "PBOC",
+        "instruments": [
+            {"name": "PRC Civil Code (contracts book III; mandate ch. 23)",
+             "citation": "2020, eff. 2021", "role": "civil law",
+             "url": "http://www.npc.gov.cn/englishnpc/c23934/202012/f627aa3a4651475db936899d69419d1e.shtml"},
+            {"name": "E-Commerce Law of the PRC",
+             "citation": "2018, eff. 2019", "role": "commercial law",
+             "url": "http://www.npc.gov.cn/npc/c2/c30834/201908/t20190821_300556.html"},
+            {"name": "PBOC payment & clearing rules (IBPS)",
+             "citation": "PBOC", "role": "scheme rules",
+             "url": "http://www.pbc.gov.cn/en/3688110/3688172/index.html"},
+        ],
+    },
+    "stablecoin_x402": {
+        "legal_system": "private ordering (contract) + emerging statute",
+        "regulator": "none scheme-level; issuer regimes (e.g. MiCA) apply",
+        "instruments": [
+            {"name": "UCC Article 12 (controllable electronic records, 2022 amendments)",
+             "citation": "ULC 2022 amendments", "role": "digital-asset commercial law",
+             "url": "https://www.uniformlaws.org/committees/community-home?CommunityKey=1457c422-ddb7-40b0-8c76-39a1991651ac"},
+            {"name": "Markets in Crypto-Assets Regulation (MiCA) — issuer obligations",
+             "citation": "Regulation (EU) 2023/1114", "role": "issuer regulation",
+             "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32023R1114"},
+            {"name": "x402 protocol specification (settlement terms by reference)",
+             "citation": "Coinbase, open spec", "role": "protocol terms",
+             "url": "https://github.com/coinbase/x402"},
+        ],
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # In-memory notional-credits ledger
 # ---------------------------------------------------------------------------
 
@@ -411,6 +805,8 @@ def _index() -> dict[str, Any]:
             "GET /view/readme": "README rendered as HTML for humans",
             "GET /regions": "list all jurisdictions and their dispute regimes",
             "POST /regions/recommend": "Nash-optimal region for two parties {client_prefs, agent_prefs}",
+            "GET /taxonomy": "civil/commercial-law dispute taxonomy + reason-code linkage",
+            "GET /regions/{region}/legal": "a jurisdiction's legal system, regulator, official instruments",
             "POST /consent": "store a spend mandate {consent_id, principal, budget, merchant_allowlist?}",
             "POST /pay": "settle within consent {ref, from_account, to_account, amount, region, consent_id?}",
             "POST /escrow": "open+fund escrow {escrow_id, payer, payee, amount, region, condition_expected}",
@@ -500,6 +896,71 @@ def recommend(body: RecommendIn) -> dict[str, Any]:
             "recall_window_ticks": REGIONS[agreed].recall_window_ticks,
         },
         "note": "None means the parties share no acceptable region — do not transact.",
+    }
+
+
+@app.get("/taxonomy")
+def taxonomy() -> dict[str, Any]:
+    """Full dispute taxonomy grounded in civil & commercial law.
+
+    Returns the legal categories (with civil-law and common-law doctrinal
+    bases), the reason-code → category mapping, and per-region linkage: which
+    codes each jurisdiction accepts and under which legal category.
+    """
+    return {
+        "categories": LEGAL_CATEGORIES,
+        "reason_codes": {
+            code: {
+                "category": cat,
+                "label": LEGAL_CATEGORIES[cat]["label"],
+            }
+            for code, cat in REASON_LEGAL.items()
+        },
+        "regions": {
+            key: {
+                "legal_system": LEGAL_SOURCES[key]["legal_system"],
+                "reason_codes": {
+                    code: REASON_LEGAL[code] for code in sorted(r.reason_codes)
+                },
+            }
+            for key, r in REGIONS.items()
+        },
+        "note": "Category bases cite representative instruments; per-region "
+                "operative sources are at GET /regions/{region}/legal.",
+    }
+
+
+@app.get("/regions/{region}/legal")
+def region_legal(region: str) -> dict[str, Any]:
+    """A jurisdiction's dispute law: system, regulator, official instruments,
+    and each accepted reason code linked to its civil/commercial-law basis."""
+    if region not in REGIONS or region not in LEGAL_SOURCES:
+        raise HTTPException(404, f"unknown region {region!r}; see GET /regions")
+    r = REGIONS[region]
+    src = LEGAL_SOURCES[region]
+    system = str(src["legal_system"])
+    civilish = "civil" in system or "Sharia" in system or "transnational" in system
+    linkage = []
+    for code in sorted(r.reason_codes):
+        cat = REASON_LEGAL[code]
+        c = LEGAL_CATEGORIES[cat]
+        linkage.append({
+            "reason_code": code,
+            "category": cat,
+            "label": c["label"],
+            "operative_basis": c["civil_law_basis"] if civilish else c["common_law_basis"],
+            "other_tradition_basis": c["common_law_basis"] if civilish else c["civil_law_basis"],
+        })
+    return {
+        "region": region,
+        "label": r.label,
+        "rail": r.rail,
+        "legal_system": src["legal_system"],
+        "regulator": src["regulator"],
+        "instruments": src["instruments"],
+        "recall_allowed": r.recall_allowed,
+        "recall_window_ticks": r.recall_window_ticks,
+        "reason_code_linkage": linkage,
     }
 
 

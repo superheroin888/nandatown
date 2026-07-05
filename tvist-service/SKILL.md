@@ -43,6 +43,8 @@ All request/response bodies are JSON. Errors return `{"error": "..."}` with a
 |---|---|---|
 | `GET /regions` | — | List all 22 jurisdictions and their dispute regimes |
 | `POST /regions/recommend` | `{client_prefs:[...], agent_prefs:[...]}` | Nash-optimal region for both parties (or `null` = no deal) |
+| `GET /taxonomy` | — | Civil/commercial-law dispute taxonomy: 7 legal categories, reason-code → category mapping, per-region linkage |
+| `GET /regions/{region}/legal` | — | A jurisdiction's legal system, regulator, and official legal instruments (statutes, scheme rulebooks, with links to the official source), plus each accepted reason code's operative legal basis |
 | `POST /consent` | `{consent_id, principal, budget, merchant_allowlist?}` | Store a spend mandate |
 | `POST /pay` | `{ref, from_account, to_account, amount, region, consent_id?}` | Settle; enforces consent; marks irrevocability by region |
 | `POST /escrow` | `{escrow_id, payer, payee, amount, region, condition_expected}` | Open + fund escrow (holds payer's funds) |
@@ -156,3 +158,10 @@ curl -s -X POST $BASE/escrow/fare/release                            # airline p
 - `GET /regions` tells you, per region: `irrevocable`, `recall_allowed`,
   `recall_window_ticks`, and the valid `reason_codes` — read it before choosing a
   region or a dispute reason.
+- Legal grounding: every reason code maps to a civil/commercial-law category
+  (`GET /taxonomy` — non-performance, non-conformity, fraud/unauthorized,
+  agency/mandate, unjust enrichment, procedural recall, continuing obligations),
+  and every jurisdiction lists its operative statutes, scheme rulebooks, and
+  regulator with links to the official legal source
+  (`GET /regions/{region}/legal`). Cite the `operative_basis` when filing a
+  dispute on a principal's behalf.
