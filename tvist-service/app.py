@@ -779,6 +779,55 @@ def _md_response(filename: str, download: bool) -> Response:
     )
 
 
+# The pitch-kit artifacts, downloadable from the live service.
+PITCH_FILES: dict[str, tuple[str, str, str]] = {
+    "brief-pdf": ("Tvist-Executive-Brief.pdf", "application/pdf",
+                  "Executive brief — one airy page, 60-second read"),
+    "summary-pdf": ("Tvist-Executive-Summary.pdf", "application/pdf",
+                    "Executive summary — dense one-pager"),
+    "summary-docx": ("Tvist-Executive-Summary.docx",
+                     "application/vnd.openxmlformats-officedocument"
+                     ".wordprocessingml.document",
+                     "Executive summary — full 5-page Word document"),
+    "deck-pptx": ("Tvist-Executive-Summary.pptx",
+                  "application/vnd.openxmlformats-officedocument"
+                  ".presentationml.presentation",
+                  "Executive summary — 6-slide presentation deck"),
+}
+
+
+@app.get("/downloads")
+def downloads() -> dict[str, Any]:
+    """List every downloadable deliverable (docs + pitch kit) with its URL."""
+    return {
+        "docs": {
+            "SKILL.md": "/skill.md?download=1",
+            "README.md": "/readme.md?download=1",
+            "OpenAPI": "/openapi.json",
+        },
+        "pitch_kit": {
+            slug: {"file": fname, "label": label, "url": f"/download/{slug}"}
+            for slug, (fname, _mt, label) in PITCH_FILES.items()
+        },
+    }
+
+
+@app.get("/download/{slug}")
+def download_file(slug: str) -> Response:
+    """Download a pitch-kit artifact (brief-pdf, summary-pdf, summary-docx, deck-pptx)."""
+    if slug not in PITCH_FILES:
+        raise HTTPException(404, f"unknown download {slug!r}; see GET /downloads")
+    fname, media_type, _label = PITCH_FILES[slug]
+    path = _HERE / "assets" / fname
+    if not path.exists():
+        raise HTTPException(404, f"{fname} not found on this deployment")
+    return Response(
+        path.read_bytes(),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 @app.get("/skill.md")
 def skill_md(download: bool = False) -> Response:
     """The agent-facing SKILL.md — inline view; ``?download=1`` to save it."""
@@ -923,6 +972,8 @@ def _index() -> dict[str, Any]:
             "GET /stats": "live service metrics (accounts, settlements, escrows, funds)",
             "GET /disclaimer": "technical-demo / not-legal-advice disclaimer",
             "GET /spectrum": "the four trust relationships + one-gate logic (ascii/mermaid/structured)",
+            "GET /downloads": "every downloadable deliverable (docs + pitch kit)",
+            "GET /download/{slug}": "pitch kit: brief-pdf | summary-pdf | summary-docx | deck-pptx",
             "GET /skill.md": "agent-facing SKILL.md (inline; ?download=1 for attachment)",
             "GET /readme.md": "service README (inline; ?download=1 for attachment)",
             "GET /view/skill": "SKILL.md rendered as HTML for humans",

@@ -289,6 +289,22 @@ def test_x402_facilitator_endpoints(client: TestClient) -> None:
     assert client.get("/x402/resource/ghost").status_code == 404
 
 
+def test_pitch_kit_downloadable(client: TestClient) -> None:
+    listing = client.get("/downloads").json()
+    assert set(listing["pitch_kit"]) == {"brief-pdf", "summary-pdf",
+                                         "summary-docx", "deck-pptx"}
+    for slug, meta in listing["pitch_kit"].items():
+        r = client.get(meta["url"])
+        assert r.status_code == 200, slug
+        assert r.headers["content-disposition"] == f'attachment; filename="{meta["file"]}"'
+        assert len(r.content) > 1000
+    assert client.get("/download/summary-pdf").headers["content-type"] == "application/pdf"
+    assert client.get("/download/ghost").status_code == 404
+    # surfaced on the human side too
+    html = client.get("/", headers={"accept": "text/html"}).text
+    assert "/download/brief-pdf" in html and "/download/deck-pptx" in html
+
+
 def test_homepage_legal_section_wired(client: TestClient) -> None:
     html = client.get("/", headers={"accept": "text/html"}).text
     assert 'id="law"' in html
