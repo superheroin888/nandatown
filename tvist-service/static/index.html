@@ -380,6 +380,14 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
         <p><code>POST /dispute</code> — accepts a case only if the reason code is valid in the agreed region.
         <code>pix_med_return</code> under UPI? Rejected. The canonical cross-rail translation table.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoDisputePair)">▶ Try it — valid ✓ then invalid ✗</button></div></div>
+      <div class="card"><span class="tag i">Component</span><h3>🤖⇄🤖 Machine-to-machine trade</h3>
+        <p><code>POST /m2m/delegate</code> + <code>POST /m2m/handshake</code> — pure agent↔agent commerce
+        on the same gates: <b>attenuated delegation chains</b> (a sub-agent's budget can never exceed
+        its delegator's; traces to the root mandate) and a <b>one-call pact</b> — Nash region +
+        mandate check + atomically funded escrow. No human in the loop; every refusal lands
+        before funds move.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoM2M)">▶ Try it — delegate → pact → deliver → paid</button>
+        <button class="btn mini" onclick="go(atkM2M)">⛔ Over-delegation + no-region pact</button></div></div>
       <div class="card"><span class="tag i">Component</span><h3>⚡ x402 on-rail payments</h3>
         <p><code>GET /x402/resource/…</code> — the HTTP-native agent rail: <b>402 Payment Required</b>
         with structured requirements, retry with a signed <code>X-PAYMENT</code> header, receive the
@@ -554,7 +562,8 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
         <p>recommend → consent → escrow → deliver → release. The payee is paid only after
         the delivery proof lands.</p>
         <div class="btnrow"><button class="btn solid" onclick="runFlow()">Run the flow</button>
-        <button class="btn" onclick="demoX402()">⚡ x402: 402 → pay → 200</button></div>
+        <button class="btn" onclick="demoX402()">⚡ x402: 402 → pay → 200</button>
+        <button class="btn" onclick="demoM2M()">🤖⇄🤖 M2M trade</button></div>
       </div>
       <div class="card">
         <span class="tag c">Attacks — expect refusals</span>
@@ -910,6 +919,38 @@ async function demoDiscovery(){
   note('── DISCOVERY · what an agent sees at GET / (Accept: */*) ──');
   await call('GET','/');
   await call('GET','/stats');
+}
+
+// ---- M2M: machine-to-machine agentic trade ---------------------------------------
+async function demoM2M(){
+  const id = uid();
+  note('── M2M · agent↔agent trade, zero humans in the loop ──');
+  note('1) root mandate: the orchestrator agent\'s own spending policy');
+  await call('POST','/consent',{consent_id:'root-'+id, principal:'orchestrator-'+id, budget:1000});
+  note('2) attenuated delegation: 300 of the 1000 goes to a shopper bot');
+  await call('POST','/m2m/delegate',{delegation_id:'d-'+id, parent_consent_id:'root-'+id,
+    agent:'shopper-'+id, budget:300});
+  note('3) one-call handshake: Nash region + mandate check + funded escrow');
+  await call('POST','/m2m/handshake',{pact_id:'p-'+id, buyer_agent:'shopper-'+id,
+    seller_agent:'seller-'+id, buyer_prefs:['eu_sepa','br_pix'],
+    seller_prefs:['br_pix','in_upi'], amount:250, delegation_id:'d-'+id});
+  note('4) seller delivers; the ordinary escrow endpoints finish the trade');
+  await call('POST',`/escrow/pact-p-${id}/deliver`,{proof:'delivered'});
+  await call('POST',`/escrow/pact-p-${id}/release`);
+  await call('GET',`/m2m/pact/p-${id}`);
+  note('✓ two machines traded safely — region agreed, mandate held, paid on proof');
+}
+async function atkM2M(){
+  const id = uid();
+  note('── M2M ATTACKS · both refused before any funds move ──');
+  await call('POST','/consent',{consent_id:'root-'+id, principal:'orch-'+id, budget:300});
+  note('sub-agent asks for MORE authority than its delegator has (500 > 300):');
+  await call('POST','/m2m/delegate',{delegation_id:'greedy-'+id, parent_consent_id:'root-'+id,
+    agent:'greedy-bot', budget:500}, true);
+  note('two agents with no shared jurisdiction try to form a pact:');
+  await call('POST','/m2m/handshake',{pact_id:'x-'+id, buyer_agent:'a-'+id,
+    seller_agent:'b-'+id, buyer_prefs:['br_pix'], seller_prefs:['us_fednow'],
+    amount:100}, true);
 }
 
 // ---- x402 on-rail payments -----------------------------------------------------

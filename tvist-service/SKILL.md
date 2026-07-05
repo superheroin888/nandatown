@@ -185,6 +185,39 @@ enforced **even on this irrevocable rail** — an over-budget x402 payment is
 refused with 402 before settlement. Facilitator endpoints `/x402/verify` and
 `/x402/settle` are available if you separate verification from delivery.
 
+### 8. Machine-to-machine: delegate to sub-agents, trade agent↔agent
+
+Pure M2M — no human in the loop, same gates. An agent acts as principal for
+sub-agents via **attenuated delegation** (a child budget can never exceed its
+parent's; allowlists only narrow; chains compose and trace to the root
+mandate). A **one-call handshake** then forms an agent↔agent pact: Nash-optimal
+region + mandate check + an atomically funded escrow.
+
+```bash
+# root mandate = the orchestrator agent's own spending policy
+curl -s -X POST $BASE/consent  -H 'content-type: application/json' \
+  -d '{"consent_id":"root","principal":"orchestrator-agent","budget":1000}'
+# delegate 300 to a shopper bot (500 would be refused: attenuation)
+curl -s -X POST $BASE/m2m/delegate -H 'content-type: application/json' \
+  -d '{"delegation_id":"d1","parent_consent_id":"root","agent":"shopper-bot","budget":300}'
+# one call: two agents agree the Nash region, mandate is checked, escrow funded
+curl -s -X POST $BASE/m2m/handshake -H 'content-type: application/json' \
+  -d '{"pact_id":"t1","buyer_agent":"shopper-bot","seller_agent":"seller-agent",
+       "buyer_prefs":["eu_sepa","br_pix"],"seller_prefs":["br_pix","in_upi"],
+       "amount":250,"delegation_id":"d1"}'
+# -> {"agreed_region":"br_pix","status":"ESCROWED","escrow_id":"pact-t1",
+#     "next_steps":["POST /escrow/pact-t1/deliver {proof}","POST /escrow/pact-t1/release"]}
+# the ordinary escrow endpoints finish the trade
+curl -s -X POST $BASE/escrow/pact-t1/deliver -H 'content-type: application/json' -d '{"proof":"delivered"}'
+curl -s -X POST $BASE/escrow/pact-t1/release
+curl -s $BASE/m2m/pact/t1        # pact + live escrow status
+```
+
+Refusals an agent must handle: `409` no shared region (do not transact), `403`
+attenuation violated or pact amount over mandate — always **before** funds
+move. A delegation id works anywhere a `consent_id` does (`/pay`, x402
+`extra.consent_id`, handshakes) — the same Tvist logic end to end.
+
 ## Full worked example — an agent books travel for its principal
 
 ```bash

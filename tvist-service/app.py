@@ -592,12 +592,27 @@ class Settlement:
 
 
 @dataclass
+class Delegation:
+    """A machine-to-machine mandate: an agent authorises a sub-agent, capped by
+    its own authority — attenuation: a child budget never exceeds its parent's."""
+
+    delegation_id: str
+    parent_id: str
+    delegator: str
+    agent: str
+    budget: int
+    depth: int
+
+
+@dataclass
 class Ledger:
     balances: dict[str, int] = field(default_factory=dict)
     consents: dict[str, Consent] = field(default_factory=dict)
     escrows: dict[str, Escrow] = field(default_factory=dict)
     settlements: dict[str, Settlement] = field(default_factory=dict)
     cases: dict[str, dict[str, Any]] = field(default_factory=dict)
+    delegations: dict[str, Delegation] = field(default_factory=dict)
+    pacts: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def balance(self, name: str) -> int:
         return self.balances.setdefault(name, START_BALANCE)
@@ -849,6 +864,10 @@ def _index() -> dict[str, Any]:
             "POST /escrow/{id}/refund": "refund a contested escrow to payer",
             "POST /recall": "recall a settled payment {ref, consent_id, current_tick?}",
             "POST /dispute": "file a dispute {ref, region, reason_code}",
+            "POST /m2m/delegate": "agent->sub-agent mandate, attenuation enforced {delegation_id, parent_consent_id, agent, budget}",
+            "POST /m2m/handshake": "one-call agent-to-agent pact: Nash region + mandate check + auto-escrow",
+            "GET /m2m/pact/{id}": "pact + live escrow status",
+            "GET /m2m/delegation/{id}": "delegation chain to the root mandate",
             "GET /x402/resource/{name}": "x402 paid resource: 402 challenge, pay via X-PAYMENT header",
             "POST /x402/verify": "facilitator verify {resource, payment_header}",
             "POST /x402/settle": "facilitator settle {resource, payment_header}",
@@ -888,6 +907,8 @@ def stats() -> dict[str, Any]:
         "escrows": {"total": len(LEDGER.escrows), **by_status},
         "held_credits": held,
         "disputes": len(LEDGER.cases),
+        "delegations": len(LEDGER.delegations),
+        "pacts": len(LEDGER.pacts),
         "total_funds": sum(LEDGER.balances.values()) + held,
         "regions": len(REGIONS),
         "endpoints": len([r for r in app.routes if isinstance(r, APIRoute)]),
@@ -1223,6 +1244,190 @@ def dispute(body: DisputeIn) -> dict[str, Any]:
 def disclaimer() -> dict[str, str]:
     """The service-wide legal disclaimer: technical demo, not legal advice."""
     return {"disclaimer": DISCLAIMER}
+
+
+# ---------------------------------------------------------------------------
+# M2M — machine-to-machine agentic commerce on the same Tvist gates
+# ---------------------------------------------------------------------------
+# Two primitives make pure agent↔agent trade safe with zero humans in the loop:
+#
+# * Attenuated delegation chains: an agent acts as principal for sub-agents.
+#   Each delegation registers a consent, so EVERY existing gate (/pay, x402,
+#   handshake) enforces it unchanged — same Tvist logic, machine principals.
+#   Attenuation is hard: a child budget can never exceed its parent's, and an
+#   allowlist can only narrow.
+# * One-call handshake: two agents form a trade pact — Nash-optimal region,
+#   mandate check, and (by default) an atomically funded escrow — then finish
+#   the trade with the ordinary /escrow/{id}/deliver + /release endpoints.
+
+
+class DelegateIn(BaseModel):
+    delegation_id: str
+    parent_consent_id: str
+    agent: str
+    budget: int
+    merchant_allowlist: list[str] | None = None
+
+
+def _delegation_chain(delegation_id: str) -> list[str]:
+    """Walk a delegation chain up to its root consent (leaf first)."""
+    chain: list[str] = []
+    cur: str | None = delegation_id
+    while cur is not None and len(chain) < 32:
+        chain.append(cur)
+        d = LEDGER.delegations.get(cur)
+        cur = d.parent_id if d else None
+    return chain
+
+
+@app.post("/m2m/delegate")
+def m2m_delegate(body: DelegateIn) -> dict[str, Any]:
+    """Delegate spending authority from one agent (or consent) to a sub-agent.
+
+    The parent may be a root consent (human or machine principal) or another
+    delegation — chains compose. Attenuation is enforced: the child budget must
+    not exceed the parent's, and any allowlist may only narrow. The delegation
+    itself registers as a consent, so all existing gates enforce it unchanged.
+    """
+    parent = LEDGER.consents.get(body.parent_consent_id)
+    if parent is None:
+        raise HTTPException(404, f"unknown parent consent {body.parent_consent_id!r}")
+    if body.delegation_id in LEDGER.consents or body.delegation_id in LEDGER.delegations:
+        raise HTTPException(409, f"duplicate delegation_id {body.delegation_id!r}")
+    if body.budget > parent.budget:
+        raise HTTPException(
+            403,
+            f"attenuation violated: child budget {body.budget} exceeds "
+            f"parent budget {parent.budget}",
+        )
+    if parent.merchant_allowlist is not None:
+        child_list = body.merchant_allowlist
+        if child_list is None or not set(child_list) <= set(parent.merchant_allowlist):
+            raise HTTPException(
+                403, "attenuation violated: allowlist may only narrow the parent's"
+            )
+    parent_delegation = LEDGER.delegations.get(body.parent_consent_id)
+    depth = (parent_delegation.depth + 1) if parent_delegation else 1
+    LEDGER.delegations[body.delegation_id] = Delegation(
+        body.delegation_id, body.parent_consent_id, parent.principal,
+        body.agent, body.budget, depth,
+    )
+    LEDGER.consents[body.delegation_id] = Consent(
+        body.delegation_id, body.agent, body.budget, body.merchant_allowlist
+    )
+    return {
+        "delegation_id": body.delegation_id,
+        "agent": body.agent,
+        "budget": body.budget,
+        "depth": depth,
+        "chain": _delegation_chain(body.delegation_id),
+        "note": "use this id as consent_id on /pay, x402 extra.consent_id, or "
+                "/m2m/handshake — the same gates enforce it",
+    }
+
+
+@app.get("/m2m/delegation/{delegation_id}")
+def m2m_delegation(delegation_id: str) -> dict[str, Any]:
+    """A delegation's details and its full chain up to the root mandate."""
+    d = LEDGER.delegations.get(delegation_id)
+    if d is None:
+        raise HTTPException(404, f"unknown delegation {delegation_id!r}")
+    return {
+        "delegation_id": d.delegation_id, "delegator": d.delegator,
+        "agent": d.agent, "budget": d.budget, "depth": d.depth,
+        "chain": _delegation_chain(delegation_id),
+    }
+
+
+class HandshakeIn(BaseModel):
+    pact_id: str
+    buyer_agent: str
+    seller_agent: str
+    buyer_prefs: list[str] = Field(..., examples=[["eu_sepa", "br_pix"]])
+    seller_prefs: list[str] = Field(..., examples=[["br_pix", "in_upi"]])
+    amount: int
+    delegation_id: str | None = None
+    auto_escrow: bool = True
+    condition_expected: str = "delivered"
+
+
+@app.post("/m2m/handshake")
+def m2m_handshake(body: HandshakeIn) -> dict[str, Any]:
+    """One-call agent↔agent trade pact — no human in the loop.
+
+    Negotiates the Nash-optimal region from both agents' preferences (no shared
+    region → 409, do not transact), enforces the buyer agent's delegated mandate
+    if supplied, and by default opens + funds an escrow atomically so the seller
+    agent ships against locked funds. Finish with the ordinary
+    ``/escrow/pact-{pact_id}/deliver`` and ``/release`` calls.
+    """
+    if body.pact_id in LEDGER.pacts:
+        raise HTTPException(409, f"duplicate pact_id {body.pact_id!r}")
+    if body.amount <= 0:
+        raise HTTPException(400, "amount must be positive")
+    agreed = recommend_region(body.buyer_prefs, body.seller_prefs)
+    if agreed is None:
+        raise HTTPException(
+            409, "no shared region between the agents — do not transact"
+        )
+    if body.delegation_id is not None:
+        consent = LEDGER.consents.get(body.delegation_id)
+        if consent is None:
+            raise HTTPException(404, f"unknown delegation/consent {body.delegation_id!r}")
+        if not consent_covers(consent, body.amount, body.seller_agent):
+            raise HTTPException(
+                403,
+                f"pact amount {body.amount} to {body.seller_agent!r} exceeds "
+                f"mandate {body.delegation_id!r}",
+            )
+    reg = regime(agreed)
+    escrow_id = None
+    if body.auto_escrow:
+        escrow_id = f"pact-{body.pact_id}"
+        if escrow_id in LEDGER.escrows:
+            raise HTTPException(409, f"duplicate escrow {escrow_id!r}")
+        LEDGER.debit(body.buyer_agent, body.amount)
+        LEDGER.escrows[escrow_id] = Escrow(
+            escrow_id, body.buyer_agent, body.seller_agent, body.amount,
+            agreed, body.condition_expected,
+        )
+    pact = {
+        "pact_id": body.pact_id,
+        "buyer_agent": body.buyer_agent,
+        "seller_agent": body.seller_agent,
+        "amount": body.amount,
+        "agreed_region": agreed,
+        "regime": {
+            "label": reg.label, "irrevocable": reg.irrevocable,
+            "recall_allowed": reg.recall_allowed,
+            "recall_window_ticks": reg.recall_window_ticks,
+        },
+        "delegation_id": body.delegation_id,
+        "escrow_id": escrow_id,
+        "status": "ESCROWED" if escrow_id else "AGREED",
+        "next_steps": (
+            [f"POST /escrow/{escrow_id}/deliver {{proof}}",
+             f"POST /escrow/{escrow_id}/release"]
+            if escrow_id else
+            ["POST /pay (or /escrow) under the agreed region"]
+        ),
+    }
+    LEDGER.pacts[body.pact_id] = pact
+    return pact
+
+
+@app.get("/m2m/pact/{pact_id}")
+def m2m_pact(pact_id: str) -> dict[str, Any]:
+    """A pact's state, with the live escrow status when one was opened."""
+    pact = LEDGER.pacts.get(pact_id)
+    if pact is None:
+        raise HTTPException(404, f"unknown pact {pact_id!r}")
+    out = dict(pact)
+    if pact.get("escrow_id"):
+        esc = LEDGER.escrows.get(str(pact["escrow_id"]))
+        if esc:
+            out["escrow_status"] = {"delivered": esc.delivered, "status": esc.status}
+    return out
 
 
 # ---------------------------------------------------------------------------

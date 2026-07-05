@@ -120,6 +120,87 @@ def test_region_legal_sources_are_official(client: TestClient) -> None:
     assert client.get("/regions/atlantis/legal").status_code == 404
 
 
+# -- M2M: machine-to-machine agentic commerce ---------------------------------
+
+
+def test_m2m_delegation_attenuation(client: TestClient) -> None:
+    # Root mandate: orchestrator-agent's own spending policy (machine principal).
+    client.post("/consent", json={"consent_id": "root", "principal": "orchestrator-agent",
+                                  "budget": 1000})
+    # Valid attenuated delegation to a sub-agent.
+    d = client.post("/m2m/delegate", json={"delegation_id": "d1", "parent_consent_id": "root",
+                                           "agent": "shopper-bot", "budget": 300})
+    assert d.status_code == 200
+    assert d.json()["depth"] == 1 and d.json()["chain"] == ["d1", "root"]
+    # Chains compose, still attenuated — and trace all the way to the root mandate.
+    d2 = client.post("/m2m/delegate", json={"delegation_id": "d2", "parent_consent_id": "d1",
+                                            "agent": "flight-bot", "budget": 200})
+    assert d2.json()["depth"] == 2 and d2.json()["chain"] == ["d2", "d1", "root"]
+    # A child cannot exceed its parent — 500 > 300 is refused.
+    bad = client.post("/m2m/delegate", json={"delegation_id": "d3", "parent_consent_id": "d1",
+                                             "agent": "greedy-bot", "budget": 500})
+    assert bad.status_code == 403 and "attenuation" in bad.json()["error"]
+    # The delegation is enforced by the SAME pay gate as any consent.
+    over = client.post("/pay", json={"ref": "m1", "from_account": "flight-bot",
+                                     "to_account": "airline", "amount": 250,
+                                     "region": "in_upi", "consent_id": "d2"})
+    assert over.status_code == 403
+    ok = client.post("/pay", json={"ref": "m2", "from_account": "flight-bot",
+                                   "to_account": "airline", "amount": 150,
+                                   "region": "in_upi", "consent_id": "d2"})
+    assert ok.status_code == 200
+
+
+def test_m2m_handshake_full_trade_no_human(client: TestClient) -> None:
+    client.post("/consent", json={"consent_id": "root", "principal": "buyer-agent",
+                                  "budget": 800})
+    client.post("/m2m/delegate", json={"delegation_id": "dd", "parent_consent_id": "root",
+                                       "agent": "buyer-agent", "budget": 500})
+    # One call: Nash region + mandate check + funded escrow.
+    h = client.post("/m2m/handshake", json={
+        "pact_id": "t1", "buyer_agent": "buyer-agent", "seller_agent": "seller-agent",
+        "buyer_prefs": ["eu_sepa", "br_pix", "in_upi"],
+        "seller_prefs": ["in_upi", "br_pix", "eu_sepa"],
+        "amount": 400, "delegation_id": "dd",
+    }).json()
+    assert h["agreed_region"] == "br_pix"          # Nash compromise, not client-first
+    assert h["status"] == "ESCROWED" and h["escrow_id"] == "pact-t1"
+    assert client.get("/accounts/buyer-agent").json()["balance"] == 100_000 - 400
+    # Seller delivers; funds release — the ordinary escrow endpoints finish it.
+    client.post("/escrow/pact-t1/deliver", json={"proof": "delivered"})
+    r = client.post("/escrow/pact-t1/release")
+    assert r.status_code == 200
+    assert client.get("/accounts/seller-agent").json()["balance"] == 100_400
+    pact = client.get("/m2m/pact/t1").json()
+    assert pact["escrow_status"]["status"] == "RELEASED"
+
+
+def test_m2m_handshake_refusals(client: TestClient) -> None:
+    # No shared region -> no deal.
+    r = client.post("/m2m/handshake", json={
+        "pact_id": "t2", "buyer_agent": "a", "seller_agent": "b",
+        "buyer_prefs": ["br_pix"], "seller_prefs": ["us_fednow"], "amount": 100,
+    })
+    assert r.status_code == 409 and "no shared region" in r.json()["error"]
+    # Over-mandate pact refused before any funds move.
+    client.post("/consent", json={"consent_id": "small", "principal": "a", "budget": 50})
+    r2 = client.post("/m2m/handshake", json={
+        "pact_id": "t3", "buyer_agent": "a", "seller_agent": "b",
+        "buyer_prefs": ["in_upi"], "seller_prefs": ["in_upi"],
+        "amount": 100, "delegation_id": "small",
+    })
+    assert r2.status_code == 403
+    assert client.get("/accounts/a").json()["balance"] == 100_000
+    assert client.get("/m2m/pact/ghost").status_code == 404
+    # stats track the M2M surface
+    client.post("/m2m/handshake", json={
+        "pact_id": "t4", "buyer_agent": "a", "seller_agent": "b",
+        "buyer_prefs": ["in_upi"], "seller_prefs": ["in_upi"], "amount": 10,
+    })
+    s = client.get("/stats").json()
+    assert s["pacts"] == 1 and "delegations" in s
+
+
 # -- x402 on-rail agent payments ---------------------------------------------
 
 
@@ -214,6 +295,13 @@ def test_homepage_legal_section_wired(client: TestClient) -> None:
     assert "fetch('/taxonomy')" in html          # category legend hydrates live
     assert "/legal" in html                      # jurisdiction explorer endpoint
     assert "showLaw()" in html and "demoLegal" in html
+
+
+def test_homepage_m2m_wired(client: TestClient) -> None:
+    html = client.get("/", headers={"accept": "text/html"}).text
+    assert "Machine-to-machine trade" in html      # component card
+    assert "demoM2M" in html and "atkM2M" in html  # live demos + attacks
+    assert "/m2m/handshake" in html and "/m2m/delegate" in html
 
 
 def test_homepage_x402_wired(client: TestClient) -> None:
