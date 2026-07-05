@@ -25,8 +25,10 @@ are *friendly fraud*, and merchants face ~$28B/yr in chargeback losses.
 
 **Net:** when an agent pays the wrong party, exceeds its mandate, or prepays for
 a service that never arrives — on a settlement-final rail, across borders where
-every rail speaks a different dispute language — there is no recourse layer.
-Nobody owns the cross-section.
+every rail speaks a different dispute language — there is no recourse layer. And
+as agents delegate to sub-agents and trade with agents they have never met, the
+authority chain itself has no enforcement: one rogue sub-agent unwinds the whole
+chain of trust. Nobody owns the cross-section.
 
 ## Options in the market today — and their gaps
 
@@ -78,8 +80,15 @@ Two capabilities complete the layer:
   challenge → signed `X-PAYMENT` (EIP-3009-shaped) → resource + settlement
   receipt, with facilitator verify/settle. Replay-safe, and the principal's
   consent cap is enforced **even on this irrevocable on-chain rail**.
+- **Machine-to-machine, same gates.** Attenuated delegation chains (a
+  sub-agent's budget can never exceed its delegator's; chains trace to the root
+  mandate) and one-call agent↔agent pacts — Nash region + mandate check +
+  atomically funded escrow — make pure agent-swarm commerce safe with zero
+  humans in the loop. One gate logic across all four trust relationships:
+  human→agent, agent→sub-agent, agent↔agent, agent→resource.
 
-The result for each party: principals can safely delegate spend; agents can
+The result for each party: principals can safely delegate spend; orchestrator
+agents can safely sub-delegate; agents can
 transact with counterparties they've never met; providers ship against locked
 funds; platforms get one dispute taxonomy instead of N.
 
@@ -111,8 +120,8 @@ holds are invariant), so the whole system is auditable by replay.
   ledger and is blocked by Tvist** on identical scenarios. 535 tests green.
 - **Live, dual-use service.** The same logic runs as a hosted API + animated
   site with an in-page playground; agents integrate from a single SKILL.md —
-  25 endpoints incl. the legal-taxonomy and x402 surfaces (49 endpoint tests
-  green; 584 tests green across the project).
+  29 endpoints incl. the legal-taxonomy, x402, and M2M surfaces (53 endpoint
+  tests green; 592 tests green across the project).
 - **Flagship use case.** DigiDoot — "a personal AI agent for every Indian
   citizen" — maps 1:1 onto Tvist as its settlement endpoint: Aadhaar-style
   consent → intent vault, UPI → regime, service journeys → escrow/recall.

@@ -302,6 +302,18 @@ def test_homepage_m2m_wired(client: TestClient) -> None:
     assert "Machine-to-machine trade" in html      # component card
     assert "demoM2M" in html and "atkM2M" in html  # live demos + attacks
     assert "/m2m/handshake" in html and "/m2m/delegate" in html
+    # scenario surfaced as pain point 5 and use cases
+    assert "Machine-to-machine trust" in html      # pain card
+    assert "Agent-swarm procurement" in html       # M2M use case
+    assert "Pay-per-call agent APIs" in html       # x402 use case
+
+
+def test_index_lists_four_trust_scenarios(client: TestClient) -> None:
+    sc = client.get("/").json()["scenarios"]
+    assert set(sc) == {"human_to_agent", "agent_to_subagent",
+                       "agent_to_agent", "agent_to_resource"}
+    for v in sc.values():
+        assert v["pain"] and v["flow"]
 
 
 def test_homepage_x402_wired(client: TestClient) -> None:

@@ -218,6 +218,12 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
         arrives. Escrow — hold until delivery is provable — is the natural construct. Nobody ships
         it rail-agnostically.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(atkEscrow)">⚡ Prove it live — escrow drain blocked</button></div></div>
+      <div class="card"><span class="tag c">Pain 5 · Machine-to-machine trust</span>
+        <h3>Agent swarms have no authority chain</h3>
+        <p>Agents now delegate to sub-agents and trade with agents they've never met — with no
+        enforcement that a sub-agent stays inside its delegator's authority, and no shared
+        jurisdiction between two machines. One rogue sub-agent unwinds the whole chain of trust.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkM2M)">⚡ Prove it live — over-delegation + no-region pact refused</button></div></div>
     </div>
   </div>
 </section>
@@ -498,6 +504,15 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
         <p>A recurring agent payment carries a standing consent; the first renewal above budget is
         refused, not refunded-after-the-fact.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoSubscription)">▶ Run</button></div></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🤖⇄🤖 Agent-swarm procurement</h3>
+        <p>An orchestrator agent delegates attenuated budgets to sub-agents, which form one-call
+        pacts with seller agents — Nash region, mandate check, funded escrow — and finish on
+        delivery proof. Zero humans in the loop.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoM2M)">▶ Run</button></div></div>
+      <div class="card"><span class="tag a">Use case</span><h3>⚡ Pay-per-call agent APIs</h3>
+        <p>An agent buys a paid resource over x402 — 402 challenge, signed <code>X-PAYMENT</code>,
+        receipt — with its principal's consent cap enforced even on the irrevocable rail.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoX402)">▶ Run</button></div></div>
       <div class="card"><span class="tag a">Use case</span><h3>🧪 Protocol testbeds</h3>
         <p>The same logic ships as a <code>payments</code> plugin in Nanda Town — run adversarial swarm
         scenarios against it before touching production rails.</p>

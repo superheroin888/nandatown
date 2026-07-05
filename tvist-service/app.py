@@ -843,6 +843,27 @@ def _index() -> dict[str, Any]:
         "what": "Escrow, consent, and dispute layer for AI agents. Notional credits (sandbox).",
         "skill": "See SKILL.md. OpenAPI at /openapi.json, interactive docs at /docs.",
         "disclaimer": DISCLAIMER,
+        "scenarios": {
+            "human_to_agent": {
+                "pain": "an agent overspends the human's mandate on a final rail",
+                "flow": "POST /consent -> POST /pay {consent_id} (403 over budget)",
+            },
+            "agent_to_subagent": {
+                "pain": "sub-agents exceed their delegator's authority; no chain control",
+                "flow": "POST /m2m/delegate (attenuated, chains to root) -> spend via "
+                        "the delegation_id anywhere a consent_id works",
+            },
+            "agent_to_agent": {
+                "pain": "two machines with no shared jurisdiction or trust trade blind",
+                "flow": "POST /m2m/handshake (Nash region + mandate + funded escrow) -> "
+                        "/escrow/{id}/deliver -> /release",
+            },
+            "agent_to_resource": {
+                "pain": "pay-per-call APIs on an irrevocable rail; replay + overspend risk",
+                "flow": "GET /x402/resource/{name} (402) -> retry with signed X-PAYMENT "
+                        "(consent-capped, replay-safe)",
+            },
+        },
         "endpoints": {
             "GET /health": "liveness",
             "GET /stats": "live service metrics (accounts, settlements, escrows, funds)",

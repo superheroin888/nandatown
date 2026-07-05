@@ -17,8 +17,9 @@
 When an AI agent spends money on someone's behalf over instant, irrevocable
 rails, Tvist is the missing recourse layer: game-theoretically negotiated
 jurisdiction (22 real regimes), consent-capped payments, delivery-gated escrow,
-proof-gated recall, law-grounded disputes with inline citations, and a native
-x402 pay rail — all behind one no-auth, dual-use URL.
+proof-gated recall, law-grounded disputes with inline citations, a native
+x402 pay rail, and machine-to-machine trade (attenuated delegation chains +
+one-call agent↔agent pacts) — all behind one no-auth, dual-use URL.
 
 ## Live endpoint links
 

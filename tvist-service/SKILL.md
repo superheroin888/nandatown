@@ -12,8 +12,18 @@ rules both parties should adopt — chosen game-theoretically so neither side is
 imposed on.
 
 Use it to: pick a mutually-optimal region, record a spend mandate, pay within it,
-escrow a service until delivery, recall a mandate-breaching charge, and file a
-dispute under valid reason codes.
+escrow a service until delivery, recall a mandate-breaching charge, file a
+dispute under valid reason codes, delegate attenuated authority to sub-agents,
+and form one-call agent↔agent trade pacts.
+
+One gate logic covers all four trust relationships:
+
+| Relationship | Pain it solves | Flow |
+|---|---|---|
+| Human → agent | agent overspends the mandate on a final rail | `/consent` → `/pay` (403 over budget) — steps 2–3 |
+| Agent → sub-agent | sub-agents exceed their delegator's authority | `/m2m/delegate` (attenuated, chains to root) — step 8 |
+| Agent ↔ agent | two machines, no shared jurisdiction, trading blind | `/m2m/handshake` (Nash region + mandate + escrow) — step 8 |
+| Agent → resource | pay-per-call APIs; replay + overspend risk | x402: 402 → signed `X-PAYMENT` — step 7 |
 
 > Sandbox: balances are **notional credits**, not real money. Accounts are
 > created automatically at 100000 credits on first use. No auth, no keys, no
