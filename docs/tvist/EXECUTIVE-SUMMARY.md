@@ -120,8 +120,8 @@ holds are invariant), so the whole system is auditable by replay.
   ledger and is blocked by Tvist** on identical scenarios. 535 tests green.
 - **Live, dual-use service.** The same logic runs as a hosted API + animated
   site with an in-page playground; agents integrate from a single SKILL.md —
-  29 endpoints incl. the legal-taxonomy, x402, and M2M surfaces (53 endpoint
-  tests green; 592 tests green across the project).
+  30 endpoints incl. the legal-taxonomy, x402, M2M, and trust-spectrum
+  surfaces (56 endpoint tests green; 595 tests green across the project).
 - **Flagship use case.** DigiDoot — "a personal AI agent for every Indian
   citizen" — maps 1:1 onto Tvist as its settlement endpoint: Aadhaar-style
   consent → intent vault, UPI → regime, service journeys → escrow/recall.
