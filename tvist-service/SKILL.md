@@ -24,6 +24,11 @@ dispute under valid reason codes.
 > gets the JSON endpoint index — the contract below is unchanged either way.
 > CORS is open (`*`), so browser-based agent frameworks can call it too.
 
+> Disclaimer: **technical demonstration only — not legal advice.** This is a
+> notional-credits sandbox, not a bank, payment institution, or law firm. Legal
+> references cite real primary sources but are engineering-grade mappings;
+> obtain qualified local counsel before relying on them (`GET /disclaimer`).
+
 ## Base URL
 
 ```
@@ -131,10 +136,18 @@ curl -s -X POST $BASE/recall -H 'content-type: application/json' -d '{"ref":"u1"
 
 ```bash
 curl -s -X POST $BASE/dispute -H 'content-type: application/json' \
-  -d '{"ref":"u1","region":"in_upi","reason_code":"goods_not_received"}'   # accepted:true
+  -d '{"ref":"u1","region":"in_upi","reason_code":"goods_not_received"}'
+# -> accepted:true + legal_basis inline, e.g.
+#    {"category":"non_performance","label":"Non-performance (non-delivery)",
+#     "legal_system":"common law","citation":"Breach of contract; total failure
+#     of consideration; UCC §2-711 buyer's remedies (US)."}
 curl -s -X POST $BASE/dispute -H 'content-type: application/json' \
   -d '{"ref":"u1","region":"in_upi","reason_code":"pix_med_return"}'       # accepted:false (wrong region)
 ```
+
+Quote the returned `legal_basis.citation` when pursuing the claim; the region's
+full instrument list (with official-source links) is at
+`GET /regions/{region}/legal`.
 
 ### 7. Pay for a resource over the x402 rail (HTTP-native, on-chain style)
 

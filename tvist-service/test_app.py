@@ -543,6 +543,38 @@ def test_dispute_valid_and_invalid_reason(client: TestClient) -> None:
     assert bad.json()["accepted"] is False
 
 
+def test_dispute_returns_citation_by_legal_tradition(client: TestClient) -> None:
+    # Common-law region (India) -> common-law citation string, inline on accept.
+    d = client.post("/dispute", json={"ref": "c1", "region": "in_upi",
+                                      "reason_code": "goods_not_received"}).json()
+    assert d["accepted"] is True
+    assert d["legal_basis"]["category"] == "non_performance"
+    assert "UCC" in d["legal_basis"]["citation"] or "Breach of contract" in d["legal_basis"]["citation"]
+    # Civil-law region (Brazil) -> civil-law citation string.
+    d2 = client.post("/dispute", json={"ref": "c2", "region": "br_pix",
+                                       "reason_code": "agent_exceeded_mandate"}).json()
+    assert d2["legal_basis"]["category"] == "agency_mandate"
+    assert "BGB" in d2["legal_basis"]["citation"] or "Code civil" in d2["legal_basis"]["citation"]
+    # Rejected filings carry no basis, but always carry the disclaimer.
+    d3 = client.post("/dispute", json={"ref": "c3", "region": "in_upi",
+                                       "reason_code": "pix_med_return"}).json()
+    assert d3["legal_basis"] is None
+    for resp in (d, d2, d3):
+        assert "not legal advice" in resp["disclaimer"]
+
+
+def test_disclaimer_everywhere(client: TestClient) -> None:
+    # Dedicated endpoint + stamped on legal-flavored responses + agent index.
+    assert "not legal advice" in client.get("/disclaimer").json()["disclaimer"]
+    assert "not legal advice" in client.get("/").json()["disclaimer"]
+    assert "not legal advice" in client.get("/taxonomy").json()["disclaimer"]
+    assert "not legal advice" in client.get("/regions/eu_sepa/legal").json()["disclaimer"]
+    # And on the human side of the dual-use surface.
+    html = client.get("/", headers={"accept": "text/html"}).text
+    assert html.count("not legal advice") >= 2      # law section + footer
+    assert "/disclaimer" in html
+
+
 # -- ledger conservation -----------------------------------------------------
 
 

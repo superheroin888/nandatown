@@ -200,6 +200,35 @@ LEGAL_CATEGORIES: dict[str, dict[str, str]] = {
     },
 }
 
+DISCLAIMER = (
+    "Technical demonstration only — a notional-credits sandbox, not a bank, "
+    "payment institution, or law firm. Legal references cite real primary "
+    "sources but are engineering-grade mappings, not legal advice; obtain "
+    "qualified local counsel before relying on them in any jurisdiction."
+)
+
+
+def legal_basis_for(region: str, reason_code: str) -> dict[str, Any] | None:
+    """The citation string an agent can quote when filing under a region.
+
+    Picks the operative doctrinal basis by the region's legal tradition
+    (civil vs common law); returns None for unknown codes.
+    """
+    cat = REASON_LEGAL.get(reason_code)
+    if cat is None:
+        return None
+    src = LEGAL_SOURCES.get(region, LEGAL_SOURCES["global"])
+    system = str(src["legal_system"])
+    civilish = "civil" in system or "Sharia" in system or "transnational" in system
+    c = LEGAL_CATEGORIES[cat]
+    return {
+        "category": cat,
+        "label": c["label"],
+        "legal_system": system,
+        "citation": c["civil_law_basis"] if civilish else c["common_law_basis"],
+    }
+
+
 REASON_LEGAL: dict[str, str] = {
     "goods_not_received": "non_performance",
     "not_as_described": "non_conformity",
@@ -798,9 +827,11 @@ def _index() -> dict[str, Any]:
         "service": "Tvist API",
         "what": "Escrow, consent, and dispute layer for AI agents. Notional credits (sandbox).",
         "skill": "See SKILL.md. OpenAPI at /openapi.json, interactive docs at /docs.",
+        "disclaimer": DISCLAIMER,
         "endpoints": {
             "GET /health": "liveness",
             "GET /stats": "live service metrics (accounts, settlements, escrows, funds)",
+            "GET /disclaimer": "technical-demo / not-legal-advice disclaimer",
             "GET /skill.md": "agent-facing SKILL.md (inline; ?download=1 for attachment)",
             "GET /readme.md": "service README (inline; ?download=1 for attachment)",
             "GET /view/skill": "SKILL.md rendered as HTML for humans",
@@ -935,6 +966,7 @@ def taxonomy() -> dict[str, Any]:
         },
         "note": "Category bases cite representative instruments; per-region "
                 "operative sources are at GET /regions/{region}/legal.",
+        "disclaimer": DISCLAIMER,
     }
 
 
@@ -969,6 +1001,7 @@ def region_legal(region: str) -> dict[str, Any]:
         "recall_allowed": r.recall_allowed,
         "recall_window_ticks": r.recall_window_ticks,
         "reason_code_linkage": linkage,
+        "disclaimer": DISCLAIMER,
     }
 
 
@@ -1160,18 +1193,36 @@ class DisputeIn(BaseModel):
 
 @app.post("/dispute")
 def dispute(body: DisputeIn) -> dict[str, Any]:
-    """File a dispute; accepted only if the reason code is valid in the region's taxonomy."""
+    """File a dispute; accepted only if the reason code is valid in the region's taxonomy.
+
+    An accepted case returns ``legal_basis`` inline — the civil/commercial-law
+    category and the citation string (chosen by the region's legal tradition)
+    that the agent can quote when pursuing the claim.
+    """
     reg = regime(body.region)
     accepted = body.reason_code in reg.reason_codes
+    basis = legal_basis_for(body.region, body.reason_code) if accepted else None
     if accepted:
-        LEDGER.cases[body.ref] = {"region": body.region, "reason_code": body.reason_code}
+        LEDGER.cases[body.ref] = {
+            "region": body.region,
+            "reason_code": body.reason_code,
+            "legal_basis": basis,
+        }
     return {
         "ref": body.ref,
         "accepted": accepted,
         "reason_code": body.reason_code,
         "region": body.region,
+        "legal_basis": basis,
         "valid_reason_codes": sorted(reg.reason_codes),
+        "disclaimer": DISCLAIMER,
     }
+
+
+@app.get("/disclaimer")
+def disclaimer() -> dict[str, str]:
+    """The service-wide legal disclaimer: technical demo, not legal advice."""
+    return {"disclaimer": DISCLAIMER}
 
 
 # ---------------------------------------------------------------------------

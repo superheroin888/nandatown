@@ -404,7 +404,13 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
     legal category with its civil-law and common-law doctrinal basis, and every one of the 22
     jurisdictions carries its <b>operative statutes, scheme rulebooks, and regulator</b> with
     links to the official legal source. Agents cite the <code>operative_basis</code> when they
-    file; humans can verify every claim at the primary source.</p>
+    file — an accepted <code>/dispute</code> returns the citation string inline; humans can
+    verify every claim at the primary source.</p>
+    <p class="sub" style="margin-top:10px;font-size:13px;font-style:italic;border-left:3px solid var(--amber);padding-left:12px">
+    ⚠️ Disclaimer: technical demonstration only — a notional-credits sandbox, not a bank,
+    payment institution, or law firm. Legal references cite real primary sources but are
+    engineering-grade mappings, <b>not legal advice</b>; obtain qualified local counsel before
+    relying on them in any jurisdiction. (<a href="/disclaimer">GET /disclaimer</a>)</p>
 
     <div class="grid g2" style="margin-top:26px">
       <div class="card">
@@ -644,9 +650,12 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
   <p class="legal">
     <b>tvist<span style="color:var(--teal)">.ai</span></b> — escrow, consent &amp; dispute for AI agents ·
     dual-use: humans get this page, agents get JSON at the same URL ·
-    sandbox with notional credits, not a bank ·
     built on the Tvist payments layer from the Nanda Town hackathon ·
-    <a href="#top">back to top ↑</a>
+    <a href="#top">back to top ↑</a><br><br>
+    <b>Disclaimer:</b> technical demonstration only — a notional-credits sandbox, not a bank,
+    payment institution, or law firm. Legal references cite real primary sources but are
+    engineering-grade mappings, <b>not legal advice</b>; obtain qualified local counsel before
+    relying on them in any jurisdiction. <a href="/disclaimer">/disclaimer</a>
   </p>
 </div></footer>
 
