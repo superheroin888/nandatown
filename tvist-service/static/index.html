@@ -380,6 +380,13 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
         <p><code>POST /dispute</code> — accepts a case only if the reason code is valid in the agreed region.
         <code>pix_med_return</code> under UPI? Rejected. The canonical cross-rail translation table.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoDisputePair)">▶ Try it — valid ✓ then invalid ✗</button></div></div>
+      <div class="card"><span class="tag i">Component</span><h3>⚡ x402 on-rail payments</h3>
+        <p><code>GET /x402/resource/…</code> — the HTTP-native agent rail: <b>402 Payment Required</b>
+        with structured requirements, retry with a signed <code>X-PAYMENT</code> header, receive the
+        resource + an <code>X-PAYMENT-RESPONSE</code> receipt. Irrevocable regime; replays rejected;
+        the principal's consent cap holds <b>even on-chain</b>.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoX402)">▶ Try it — 402 → pay → 200</button>
+        <button class="btn mini" onclick="go(atkX402)">⛔ Replay + over-consent</button></div></div>
       <div class="card"><span class="tag a">Meta</span><h3>🤖 Self-describing for agents</h3>
         <p><code>GET /</code> lists every endpoint as JSON; <code>GET /openapi.json</code> is the machine spec;
         <code>GET /stats</code> exposes live state; <a href="/skill.md">SKILL.md</a> is the one file an agent needs.</p>
@@ -540,7 +547,8 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
         <h3>▶ Full escrowed booking (5 calls)</h3>
         <p>recommend → consent → escrow → deliver → release. The payee is paid only after
         the delivery proof lands.</p>
-        <div class="btnrow"><button class="btn solid" onclick="runFlow()">Run the flow</button></div>
+        <div class="btnrow"><button class="btn solid" onclick="runFlow()">Run the flow</button>
+        <button class="btn" onclick="demoX402()">⚡ x402: 402 → pay → 200</button></div>
       </div>
       <div class="card">
         <span class="tag c">Attacks — expect refusals</span>
@@ -552,6 +560,7 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
           <button class="btn" onclick="atkFednow()">FedNow recall</button>
           <button class="btn" onclick="atkClawback()">Unjust clawback</button>
           <button class="btn" onclick="atkReason()">Wrong-region dispute</button>
+          <button class="btn" onclick="atkX402()">x402 replay</button>
         </div>
       </div>
     </div>
@@ -892,6 +901,51 @@ async function demoDiscovery(){
   note('── DISCOVERY · what an agent sees at GET / (Accept: */*) ──');
   await call('GET','/');
   await call('GET','/stats');
+}
+
+// ---- x402 on-rail payments -----------------------------------------------------
+function x402Header(payer, value, nonce, consentId){
+  const p = {x402Version:1, scheme:'exact', network:'base-sepolia-sim',
+    payload:{authorization:{from:payer, to:'tvist-treasury', value:value,
+      validAfter:0, validBefore:9999999999, nonce:nonce}, signature:'sim-'+nonce},
+    extra: consentId ? {consent_id: consentId} : {}};
+  return btoa(JSON.stringify(p));
+}
+async function x402Fetch(path, header, expectFail){
+  logReq('GET', path, header ? {'X-PAYMENT':'(base64 EIP-3009 authorization)'} : null);
+  try{
+    const r = await fetch(path, {headers: header ? {'X-PAYMENT': header} : {}});
+    const data = await r.json();
+    logRes(r.status, data, expectFail ? !r.ok : r.ok);
+    const pr = r.headers.get('X-PAYMENT-RESPONSE');
+    if (pr){
+      const receipt = JSON.parse(atob(pr));
+      con.innerHTML += `<span class="g">  X-PAYMENT-RESPONSE: ${esc(JSON.stringify(receipt))}</span>\n`;
+      con.scrollTop = con.scrollHeight;
+    }
+    refreshStats();
+    return r.status;
+  }catch(e){ logRes('ERR', String(e), false); return 0; }
+}
+async function demoX402(){
+  const id = uid(), payer = 'agent-'+id;
+  note('── x402 · HTTP-native agent payment: 402 → sign → pay → 200 ──');
+  note('1) ask without payment — the rail answers 402 with the requirements:');
+  await x402Fetch('/x402/resource/market-report', null, true);
+  note('2) retry with a signed X-PAYMENT header (EIP-3009-shaped, sandbox-signed):');
+  await x402Fetch('/x402/resource/market-report', x402Header(payer, 25, 'n-'+id));
+  note('✓ resource delivered + on-rail receipt; settlement is IRREVOCABLE (stablecoin_x402)');
+}
+async function atkX402(){
+  const id = uid(), payer = 'agent-'+id, n = 'n-'+id;
+  note('── x402 ATTACKS · replay + over-consent, both refused on-rail ──');
+  const h = x402Header(payer, 25, n);
+  await x402Fetch('/x402/resource/market-report', h);
+  note('replay the SAME signed payment (double-spend attempt):');
+  await x402Fetch('/x402/resource/market-report', h, true);
+  note('principal capped this agent at 10 — over-budget x402 payment refused:');
+  await call('POST','/consent',{consent_id:'xcap-'+id, principal:payer, budget:10});
+  await x402Fetch('/x402/resource/market-report', x402Header(payer, 25, 'n2-'+id, 'xcap-'+id), true);
 }
 
 // ---- persona + use-case demos ----------------------------------------------------

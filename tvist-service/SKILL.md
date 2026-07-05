@@ -56,7 +56,10 @@ All request/response bodies are JSON. Errors return `{"error": "..."}` with a
 | `POST /recall` | `{ref, consent_id, current_tick?}` | Reverse a settled payment **only** if region allows recall AND the payment breached the mandate |
 | `POST /dispute` | `{ref, region, reason_code}` | Accepted only if `reason_code` is valid in that region |
 | `GET /accounts/{name}` | — | Notional balance |
-| `GET /stats` | — | Live service metrics (accounts, settlements, escrows, held credits, funds) |
+| `GET /x402/resource/{name}` | `X-PAYMENT` header | x402 paid resource: returns **402 + payment requirements**; retry with a signed payment header to receive the resource + `X-PAYMENT-RESPONSE` receipt |
+| `POST /x402/verify` | `{resource, payment_header}` | Facilitator: is this X-PAYMENT valid? |
+| `POST /x402/settle` | `{resource, payment_header}` | Facilitator: verify + settle on the ledger |
+| `GET /stats` | — | Live service metrics (accounts, settlements, escrows, held credits, funds, x402 settlements) |
 
 ## Steps to use (copy-paste curl)
 
@@ -132,6 +135,42 @@ curl -s -X POST $BASE/dispute -H 'content-type: application/json' \
 curl -s -X POST $BASE/dispute -H 'content-type: application/json' \
   -d '{"ref":"u1","region":"in_upi","reason_code":"pix_med_return"}'       # accepted:false (wrong region)
 ```
+
+### 7. Pay for a resource over the x402 rail (HTTP-native, on-chain style)
+
+x402 is how agents pay per request: ask for the resource, get **402 Payment
+Required** with structured requirements, retry with a signed `X-PAYMENT`
+header. Sandbox note: signatures are simulated as `sim-<nonce>`; credits stand
+in for USDC on `base-sepolia-sim`. x402 settlements are **irrevocable**
+(`stablecoin_x402` regime — recall always refused; use escrow or the consent
+cap for protection).
+
+```bash
+# 1. discover the price — 402 with the requirements
+curl -si $BASE/x402/resource/market-report | head -1     # HTTP/2 402
+curl -s  $BASE/x402/resource/market-report               # {"accepts":[{"scheme":"exact","payTo":"tvist-treasury","maxAmountRequired":25,...}]}
+
+# 2. build the payment header (EIP-3009-shaped authorization, base64)
+PAY=$(python3 -c "
+import base64, json, uuid
+n = uuid.uuid4().hex
+p = {'x402Version': 1, 'scheme': 'exact', 'network': 'base-sepolia-sim',
+     'payload': {'authorization': {'from': 'my-agent', 'to': 'tvist-treasury',
+                                   'value': 25, 'validAfter': 0,
+                                   'validBefore': 9999999999, 'nonce': n},
+                 'signature': 'sim-' + n},
+     'extra': {}}
+print(base64.b64encode(json.dumps(p).encode()).decode())")
+
+# 3. retry with the header — resource + X-PAYMENT-RESPONSE receipt
+curl -s -D - $BASE/x402/resource/market-report -H "X-PAYMENT: $PAY" | grep -i x-payment-response
+curl -s      $BASE/x402/resource/market-report -H "X-PAYMENT: $PAY"   # (new nonce needed — replays are rejected)
+```
+
+Tvist twist: put your principal's `consent_id` in `extra` and the mandate is
+enforced **even on this irrevocable rail** — an over-budget x402 payment is
+refused with 402 before settlement. Facilitator endpoints `/x402/verify` and
+`/x402/settle` are available if you separate verification from delivery.
 
 ## Full worked example — an agent books travel for its principal
 

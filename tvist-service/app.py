@@ -20,6 +20,7 @@ FastAPI serves OpenAPI at `/openapi.json` and docs at `/docs`).
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -619,6 +620,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-PAYMENT-RESPONSE"],
 )
 
 
@@ -816,6 +818,9 @@ def _index() -> dict[str, Any]:
             "POST /escrow/{id}/refund": "refund a contested escrow to payer",
             "POST /recall": "recall a settled payment {ref, consent_id, current_tick?}",
             "POST /dispute": "file a dispute {ref, region, reason_code}",
+            "GET /x402/resource/{name}": "x402 paid resource: 402 challenge, pay via X-PAYMENT header",
+            "POST /x402/verify": "facilitator verify {resource, payment_header}",
+            "POST /x402/settle": "facilitator settle {resource, payment_header}",
             "GET /accounts/{name}": "balance of a notional account",
             "GET /escrow/{id}": "escrow status",
         },
@@ -845,6 +850,9 @@ def stats() -> dict[str, Any]:
         "accounts": len(LEDGER.balances),
         "consents": len(LEDGER.consents),
         "settlements": len(LEDGER.settlements),
+        "x402_settlements": sum(
+            1 for s in LEDGER.settlements.values() if s.region == "stablecoin_x402"
+        ),
         "recalled": sum(1 for s in LEDGER.settlements.values() if s.reversed),
         "escrows": {"total": len(LEDGER.escrows), **by_status},
         "held_credits": held,
@@ -1164,6 +1172,196 @@ def dispute(body: DisputeIn) -> dict[str, Any]:
         "region": body.region,
         "valid_reason_codes": sorted(reg.reason_codes),
     }
+
+
+# ---------------------------------------------------------------------------
+# x402 — HTTP-native on-rail agent payments (sandbox simulation)
+# ---------------------------------------------------------------------------
+# Implements the x402 flow (https://github.com/coinbase/x402): a paid resource
+# answers HTTP 402 with structured payment requirements; the agent retries with
+# a base64 X-PAYMENT header carrying an EIP-3009-shaped authorization; the
+# facilitator verifies and settles; the resource is delivered with an
+# X-PAYMENT-RESPONSE header. Sandbox: notional credits stand in for USDC on a
+# simulated Base network, and signatures are simulated ("sim-<nonce>").
+# The Tvist twist on the rail: optional consent enforcement (extra.consent_id),
+# nonce replay protection, and settlements recorded under the irrevocable
+# `stablecoin_x402` regime — escrow, not recall, is the protection here.
+
+import base64
+import hashlib
+
+X402_VERSION = 1
+X402_NETWORK = "base-sepolia-sim"
+X402_ASSET = "credits (sandbox USDC stand-in)"
+X402_TREASURY = "tvist-treasury"
+
+PAID_RESOURCES: dict[str, dict[str, Any]] = {
+    "market-report": {
+        "price": 25,
+        "description": "Tvist agentic-commerce market snapshot (paid demo resource)",
+        "content": {
+            "title": "Agentic commerce market snapshot",
+            "highlights": [
+                "1 in 6 Black Friday 2025 purchases were AI-assisted",
+                "trust is the #1 adoption barrier (Juniper 2026)",
+                "instant-payment fraud risk up to 10x higher (ECB)",
+            ],
+        },
+    },
+    "dispute-precedents": {
+        "price": 15,
+        "description": "Reason-code -> legal-basis extract from the Tvist taxonomy",
+        "content": {
+            "agent_exceeded_mandate": "agency/mandate — falsus procurator (BGB §177) / "
+                                      "apparent authority (Restatement (Third) of Agency)",
+            "mistaken_payment": "unjust enrichment — condictio indebiti (BGB §812) / "
+                                "Barclays Bank v W.J. Simms",
+        },
+    },
+}
+
+X402_USED_NONCES: set[str] = set()
+
+
+def _x402_requirements(name: str) -> dict[str, Any]:
+    res = PAID_RESOURCES[name]
+    return {
+        "scheme": "exact",
+        "network": X402_NETWORK,
+        "maxAmountRequired": res["price"],
+        "resource": f"/x402/resource/{name}",
+        "description": res["description"],
+        "mimeType": "application/json",
+        "payTo": X402_TREASURY,
+        "maxTimeoutSeconds": 60,
+        "asset": X402_ASSET,
+        "extra": {"consent_id": "optional — Tvist enforces the principal's mandate "
+                                "on-rail when present"},
+    }
+
+
+def _x402_verify(name: str, header: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Verify an X-PAYMENT header against a resource's requirements.
+
+    Returns (payment, None) when valid, else (None, invalid_reason).
+    """
+    if name not in PAID_RESOURCES:
+        return None, f"unknown resource {name!r}"
+    try:
+        payment = json.loads(base64.b64decode(header))
+    except Exception:
+        return None, "X-PAYMENT header is not base64-encoded JSON"
+    if payment.get("x402Version") != X402_VERSION:
+        return None, f"unsupported x402Version (want {X402_VERSION})"
+    if payment.get("scheme") != "exact":
+        return None, "unsupported scheme (want 'exact')"
+    if payment.get("network") != X402_NETWORK:
+        return None, f"wrong network (want {X402_NETWORK})"
+    auth = (payment.get("payload") or {}).get("authorization") or {}
+    sig = (payment.get("payload") or {}).get("signature") or ""
+    nonce = str(auth.get("nonce", ""))
+    if not nonce:
+        return None, "authorization.nonce required"
+    if nonce in X402_USED_NONCES:
+        return None, "nonce already used (replay rejected)"
+    if not str(sig).startswith("sim-"):
+        return None, "invalid signature (sandbox expects 'sim-<nonce>')"
+    if auth.get("to") != X402_TREASURY:
+        return None, f"authorization.to must be {X402_TREASURY!r}"
+    price = PAID_RESOURCES[name]["price"]
+    try:
+        value = int(auth.get("value", 0))
+    except (TypeError, ValueError):
+        return None, "authorization.value must be an integer"
+    if value < price:
+        return None, f"underpayment: {value} < required {price}"
+    payer = str(auth.get("from", ""))
+    if not payer:
+        return None, "authorization.from required"
+    # Tvist consent gate — if the agent supplies its principal's consent_id,
+    # the mandate is enforced even on this irrevocable rail.
+    consent_id = (payment.get("extra") or {}).get("consent_id")
+    if consent_id:
+        consent = LEDGER.consents.get(str(consent_id))
+        if consent is None:
+            return None, f"unknown consent_id {consent_id!r}"
+        if not consent_covers(consent, value, X402_TREASURY):
+            return None, f"payment {value} exceeds consent {consent_id!r}"
+    if LEDGER.balance(payer) < value:
+        return None, f"insufficient balance: {payer}"
+    return payment, None
+
+
+def _x402_settle(name: str, payment: dict[str, Any]) -> dict[str, Any]:
+    """Execute a verified x402 payment on the ledger (irrevocable settlement)."""
+    auth = payment["payload"]["authorization"]
+    payer, value, nonce = str(auth["from"]), int(auth["value"]), str(auth["nonce"])
+    LEDGER.debit(payer, value)
+    LEDGER.credit(X402_TREASURY, value)
+    ref = f"x402-{nonce[:16]}"
+    LEDGER.settlements[ref] = Settlement(
+        ref, payer, X402_TREASURY, value, "stablecoin_x402", irrevocable=True
+    )
+    X402_USED_NONCES.add(nonce)
+    tx_hash = hashlib.sha256(f"{nonce}:{payer}:{value}".encode()).hexdigest()
+    return {"success": True, "txHash": f"0x{tx_hash}", "networkId": X402_NETWORK,
+            "payer": payer, "amount": value, "ref": ref}
+
+
+@app.get("/x402/resource/{name}")
+def x402_resource(name: str, request: Request) -> JSONResponse:
+    """A paid resource behind the x402 flow.
+
+    Without an ``X-PAYMENT`` header: **402 Payment Required** with the structured
+    payment requirements (``accepts``). With a valid header: verifies, settles on
+    the ledger, and returns the resource with an ``X-PAYMENT-RESPONSE`` header.
+    """
+    if name not in PAID_RESOURCES:
+        raise HTTPException(404, f"unknown paid resource {name!r}")
+    header = request.headers.get("x-payment")
+    if not header:
+        return JSONResponse(status_code=402, content={
+            "x402Version": X402_VERSION,
+            "error": "X-PAYMENT header required",
+            "accepts": [_x402_requirements(name)],
+        })
+    payment, reason = _x402_verify(name, header)
+    if payment is None:
+        return JSONResponse(status_code=402, content={
+            "x402Version": X402_VERSION,
+            "error": reason,
+            "accepts": [_x402_requirements(name)],
+        })
+    receipt = _x402_settle(name, payment)
+    resp_header = base64.b64encode(json.dumps(receipt).encode()).decode()
+    return JSONResponse(
+        content=PAID_RESOURCES[name]["content"],
+        headers={"X-PAYMENT-RESPONSE": resp_header},
+    )
+
+
+class X402FacilitatorIn(BaseModel):
+    resource: str
+    payment_header: str
+
+
+@app.post("/x402/verify")
+def x402_facilitator_verify(body: X402FacilitatorIn) -> dict[str, Any]:
+    """Facilitator-style verification: is this X-PAYMENT valid for the resource?"""
+    payment, reason = _x402_verify(body.resource, body.payment_header)
+    payer = ""
+    if payment is not None:
+        payer = str(payment["payload"]["authorization"].get("from", ""))
+    return {"isValid": payment is not None, "invalidReason": reason, "payer": payer}
+
+
+@app.post("/x402/settle")
+def x402_facilitator_settle(body: X402FacilitatorIn) -> dict[str, Any]:
+    """Facilitator-style settlement: verify then execute the payment on-ledger."""
+    payment, reason = _x402_verify(body.resource, body.payment_header)
+    if payment is None:
+        raise HTTPException(402, reason or "invalid payment")
+    return _x402_settle(body.resource, payment)
 
 
 @app.get("/accounts/{name}")

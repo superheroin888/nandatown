@@ -120,12 +120,108 @@ def test_region_legal_sources_are_official(client: TestClient) -> None:
     assert client.get("/regions/atlantis/legal").status_code == 404
 
 
+# -- x402 on-rail agent payments ---------------------------------------------
+
+
+def _x402_header(payer: str, value: int, nonce: str, consent_id: str | None = None) -> str:
+    import base64
+    import json
+
+    payment = {
+        "x402Version": 1,
+        "scheme": "exact",
+        "network": "base-sepolia-sim",
+        "payload": {
+            "authorization": {"from": payer, "to": "tvist-treasury", "value": value,
+                              "validAfter": 0, "validBefore": 9999999999, "nonce": nonce},
+            "signature": f"sim-{nonce}",
+        },
+        "extra": ({"consent_id": consent_id} if consent_id else {}),
+    }
+    return base64.b64encode(json.dumps(payment).encode()).decode()
+
+
+def test_x402_challenge_then_pay(client: TestClient) -> None:
+    # 1) no header -> 402 with structured requirements
+    r = client.get("/x402/resource/market-report")
+    assert r.status_code == 402
+    body = r.json()
+    assert body["x402Version"] == 1
+    req = body["accepts"][0]
+    assert req["scheme"] == "exact" and req["payTo"] == "tvist-treasury"
+    assert req["maxAmountRequired"] == 25
+    # 2) retry with a signed X-PAYMENT header -> 200 + resource + receipt header
+    h = _x402_header("agent-x", 25, "n-1")
+    r2 = client.get("/x402/resource/market-report", headers={"X-PAYMENT": h})
+    assert r2.status_code == 200
+    assert "highlights" in r2.json()
+    import base64
+    import json
+
+    receipt = json.loads(base64.b64decode(r2.headers["X-PAYMENT-RESPONSE"]))
+    assert receipt["success"] is True and receipt["txHash"].startswith("0x")
+    assert receipt["networkId"] == "base-sepolia-sim"
+    # settlement recorded as irrevocable stablecoin_x402
+    assert client.get("/stats").json()["x402_settlements"] == 1
+    assert client.get("/accounts/tvist-treasury").json()["balance"] == 100_025
+
+
+def test_x402_replay_and_underpayment_rejected(client: TestClient) -> None:
+    h = _x402_header("agent-y", 25, "n-replay")
+    assert client.get("/x402/resource/market-report", headers={"X-PAYMENT": h}).status_code == 200
+    # replaying the same nonce is refused
+    r = client.get("/x402/resource/market-report", headers={"X-PAYMENT": h})
+    assert r.status_code == 402 and "replay" in r.json()["error"]
+    # underpayment is refused
+    low = _x402_header("agent-y", 5, "n-low")
+    r2 = client.get("/x402/resource/market-report", headers={"X-PAYMENT": low})
+    assert r2.status_code == 402 and "underpayment" in r2.json()["error"]
+
+
+def test_x402_consent_enforced_on_rail(client: TestClient) -> None:
+    # The Tvist twist: an agent carrying its principal's consent is capped by it
+    # even on the irrevocable x402 rail.
+    client.post("/consent", json={"consent_id": "x-cap", "principal": "agent-z", "budget": 10})
+    h = _x402_header("agent-z", 25, "n-consent", consent_id="x-cap")
+    r = client.get("/x402/resource/market-report", headers={"X-PAYMENT": h})
+    assert r.status_code == 402 and "exceeds consent" in r.json()["error"]
+    # and the resulting settlement (without consent) cannot be recalled: x402 forbids it
+    ok = _x402_header("agent-z", 25, "n-ok")
+    assert client.get("/x402/resource/market-report", headers={"X-PAYMENT": ok}).status_code == 200
+    client.post("/consent", json={"consent_id": "post-hoc", "principal": "agent-z", "budget": 1})
+    rec = client.post("/recall", json={"ref": "x402-n-ok", "consent_id": "post-hoc"}).json()
+    assert rec["reversed"] is False and "disallows recall" in rec["reason"]
+
+
+def test_x402_facilitator_endpoints(client: TestClient) -> None:
+    h = _x402_header("agent-f", 15, "n-fac")
+    v = client.post("/x402/verify", json={"resource": "dispute-precedents",
+                                          "payment_header": h}).json()
+    assert v["isValid"] is True and v["payer"] == "agent-f"
+    s = client.post("/x402/settle", json={"resource": "dispute-precedents",
+                                          "payment_header": h}).json()
+    assert s["success"] is True and s["amount"] == 15
+    # settle consumed the nonce; verifying again reports the replay
+    v2 = client.post("/x402/verify", json={"resource": "dispute-precedents",
+                                           "payment_header": h}).json()
+    assert v2["isValid"] is False and "replay" in v2["invalidReason"]
+    assert client.get("/x402/resource/ghost").status_code == 404
+
+
 def test_homepage_legal_section_wired(client: TestClient) -> None:
     html = client.get("/", headers={"accept": "text/html"}).text
     assert 'id="law"' in html
     assert "fetch('/taxonomy')" in html          # category legend hydrates live
     assert "/legal" in html                      # jurisdiction explorer endpoint
     assert "showLaw()" in html and "demoLegal" in html
+
+
+def test_homepage_x402_wired(client: TestClient) -> None:
+    html = client.get("/", headers={"accept": "text/html"}).text
+    assert "x402 on-rail payments" in html       # component card
+    assert "demoX402" in html and "atkX402" in html
+    assert "X-PAYMENT" in html                   # real header flow in the JS
+    assert "/x402/resource/market-report" in html
 
 
 def test_view_renders_docs_for_humans(client: TestClient) -> None:

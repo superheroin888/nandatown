@@ -10,7 +10,9 @@ else to use it. Notional-credits sandbox; no auth, no keys, no signup.
 - **What it does:** Nash-optimal jurisdiction recommendation over 22 real
   instant/A2A rails · consent (spend-mandate) enforcement · programmable escrow
   (release only on delivery) · region-aware irrevocable recall · dispute-reason
-  validation. See [`SKILL.md`](SKILL.md).
+  validation with civil/commercial-law grounding (`/taxonomy`) · native **x402
+  on-rail agent payments** (402 challenge → signed `X-PAYMENT` → resource +
+  receipt, replay-safe, consent-capped). See [`SKILL.md`](SKILL.md).
 
 ## Run locally
 
