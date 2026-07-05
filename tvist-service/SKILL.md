@@ -60,6 +60,7 @@ All request/response bodies are JSON. Errors return `{"error": "..."}` with a
 | `POST /regions/recommend` | `{client_prefs:[...], agent_prefs:[...]}` | Nash-optimal region for both parties (or `null` = no deal) |
 | `GET /taxonomy` | — | Civil/commercial-law dispute taxonomy: 7 legal categories, reason-code → category mapping, per-region linkage |
 | `GET /regions/{region}/legal` | — | A jurisdiction's legal system, regulator, and official legal instruments (statutes, scheme rulebooks, with links to the official source), plus each accepted reason code's operative legal basis |
+| `GET /spectrum` | — | The four trust relationships + one-gate logic, as structured data, ASCII, and Mermaid — render it or reason over it |
 | `POST /consent` | `{consent_id, principal, budget, merchant_allowlist?}` | Store a spend mandate |
 | `POST /pay` | `{ref, from_account, to_account, amount, region, consent_id?}` | Settle; enforces consent; marks irrevocability by region |
 | `POST /escrow` | `{escrow_id, payer, payee, amount, region, condition_expected}` | Open + fund escrow (holds payer's funds) |

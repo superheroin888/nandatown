@@ -316,6 +316,26 @@ def test_index_lists_four_trust_scenarios(client: TestClient) -> None:
         assert v["pain"] and v["flow"]
 
 
+def test_spectrum_endpoint_visualises_for_machines(client: TestClient) -> None:
+    sp = client.get("/spectrum").json()
+    assert len(sp["one_gate_logic"]) == 4
+    assert set(sp["relationships"]) == {"human_to_agent", "agent_to_subagent",
+                                        "agent_to_agent", "agent_to_resource"}
+    for v in sp["relationships"].values():
+        assert v["label"] and v["gate"] and v["flow"]
+    assert "ONE GATE LOGIC" in sp["ascii"]         # terminal-renderable
+    assert sp["mermaid"].startswith("graph LR")    # diagram-renderable
+    assert "not legal advice" in sp["disclaimer"]
+
+
+def test_homepage_spectrum_wired(client: TestClient) -> None:
+    html = client.get("/", headers={"accept": "text/html"}).text
+    assert 'id="spectrum"' in html
+    assert "ONE GATE LOGIC" in html                # the gate stack in the SVG
+    assert "demoDelegate" in html and "demoHandshake" in html   # clickable lanes
+    assert 'href="/spectrum"' in html              # links the machine view
+
+
 def test_homepage_x402_wired(client: TestClient) -> None:
     html = client.get("/", headers={"accept": "text/html"}).text
     assert "x402 on-rail payments" in html       # component card
@@ -370,8 +390,8 @@ def test_homepage_navigation_is_wired(client: TestClient) -> None:
     assert 'id="menu"' in html
     assert "toggleMenu()" in html
     # every nav item points at a real section id on the page
-    for sec in ("pain", "arch", "components", "law", "personas", "usecases", "api", "try",
-                "downloads"):
+    for sec in ("pain", "spectrum", "arch", "components", "law", "personas", "usecases",
+                "api", "try", "downloads"):
         assert f'href="#{sec}"' in html
         assert f'id="{sec}"' in html
     # scrollspy + back-to-top logic present

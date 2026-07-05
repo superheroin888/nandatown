@@ -127,6 +127,7 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
   <a class="logo" href="#top" title="Back to top">tvist<b>.ai</b></a>
   <div class="menu" id="menu">
     <a class="item" href="#pain">Pain points</a>
+    <a class="item" href="#spectrum">Spectrum</a>
     <a class="item" href="#arch">Architecture</a>
     <a class="item" href="#components">Components</a>
     <a class="item" href="#law">Legal</a>
@@ -224,6 +225,86 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
         enforcement that a sub-agent stays inside its delegator's authority, and no shared
         jurisdiction between two machines. One rogue sub-agent unwinds the whole chain of trust.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(atkM2M)">⚡ Prove it live — over-delegation + no-region pact refused</button></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST SPECTRUM -->
+<section id="spectrum">
+  <div class="wrap reveal">
+    <div class="kicker">The trust spectrum · live from GET /spectrum</div>
+    <h2>Four relationships. One gate logic.</h2>
+    <p class="sub">Everything an economy of agents does reduces to four trust relationships —
+    and every one of them passes through the same four Tvist gates before value moves.
+    <b>Click any lane</b> to run that relationship live in the console; agents get the same
+    picture as data at <a href="/spectrum">GET /spectrum</a> (structured + ASCII + Mermaid).</p>
+
+    <div class="flowbox">
+    <svg class="flow" viewBox="0 0 1000 452" width="100%" role="img" aria-label="Four trust relationships — human to agent, agent to sub-agent, agent to agent, agent to resource — all converge through the Tvist gate stack onto 22 rails. Every lane is clickable and runs live.">
+      <g class="clk" onclick="go(demoConsentPair)">
+        <rect class="node" x="20" y="36" width="125" height="52" rx="10"/>
+        <text x="34" y="58">🧑 HUMAN</text><text class="small" x="34" y="76">the principal</text>
+        <rect class="node hot" x="195" y="36" width="135" height="52" rx="10"/>
+        <text x="209" y="58">🤖 AGENT</text><text class="small" x="209" y="76">spends on their behalf</text>
+        <path class="arrow" d="M145 62 H 191"/>
+        <text class="small" x="20" y="106">consent · POST /consent → /pay ▶</text>
+      </g>
+      <g class="clk" onclick="go(demoDelegate)">
+        <rect class="node" x="20" y="146" width="125" height="52" rx="10"/>
+        <text x="34" y="168">🤖 ORCHESTR.</text><text class="small" x="34" y="186">machine principal</text>
+        <rect class="node hot" x="195" y="146" width="135" height="52" rx="10"/>
+        <text x="209" y="168">🤖 SUB-AGENT</text><text class="small" x="209" y="186">attenuated budget</text>
+        <path class="arrow" d="M145 172 H 191"/>
+        <text class="small" x="20" y="216">delegation · POST /m2m/delegate ▶</text>
+      </g>
+      <g class="clk" onclick="go(demoHandshake)">
+        <rect class="node hot" x="20" y="256" width="125" height="52" rx="10"/>
+        <text x="34" y="278">🤖 AGENT A</text><text class="small" x="34" y="296">buyer, never met B</text>
+        <rect class="node hot" x="195" y="256" width="135" height="52" rx="10"/>
+        <text x="209" y="278">🤖 AGENT B</text><text class="small" x="209" y="296">seller, never met A</text>
+        <path class="arrow" d="M145 282 H 191"/>
+        <path class="arrow" d="M191 292 H 145" transform="translate(0,0)"/>
+        <text class="small" x="20" y="326">pact · POST /m2m/handshake ▶</text>
+      </g>
+      <g class="clk" onclick="go(demoX402)">
+        <rect class="node hot" x="20" y="366" width="125" height="52" rx="10"/>
+        <text x="34" y="388">🤖 AGENT</text><text class="small" x="34" y="406">pays per call</text>
+        <rect class="node" x="195" y="366" width="135" height="52" rx="10"/>
+        <text x="209" y="388">🌐 RESOURCE</text><text class="small" x="209" y="406">paid API / dataset</text>
+        <path class="arrow" d="M145 392 H 191"/>
+        <text class="small" x="20" y="436">x402 · 402 → X-PAYMENT ▶</text>
+      </g>
+
+      <!-- converging lanes into the gate stack -->
+      <path class="arrow slow" d="M334 62 C 450 62, 480 140, 552 160"/>
+      <path class="arrow slow" d="M334 172 C 440 172, 470 200, 552 210"/>
+      <path class="arrow slow" d="M334 282 C 440 282, 470 268, 552 260"/>
+      <path class="arrow slow" d="M334 392 C 450 392, 480 330, 552 310"/>
+      <circle class="spark" r="4"><animateMotion dur="2.4s" repeatCount="indefinite" path="M334 62 C 450 62, 480 140, 552 160"/></circle>
+      <circle class="spark" r="4"><animateMotion dur="2.4s" begin="0.6s" repeatCount="indefinite" path="M334 172 C 440 172, 470 200, 552 210"/></circle>
+      <circle class="spark" r="4"><animateMotion dur="2.4s" begin="1.2s" repeatCount="indefinite" path="M334 282 C 440 282, 470 268, 552 260"/></circle>
+      <circle class="spark" r="4"><animateMotion dur="2.4s" begin="1.8s" repeatCount="indefinite" path="M334 392 C 450 392, 480 330, 552 310"/></circle>
+
+      <!-- the one gate stack -->
+      <rect class="node" x="556" y="84" width="234" height="44" rx="10" style="stroke:#2dd4bf;stroke-width:2"/>
+      <text x="572" y="111">TVIST — ONE GATE LOGIC</text>
+      <g class="clk" onclick="go(stepRecommend)"><rect class="node gate" x="556" y="140" width="234" height="42" rx="8"/>
+        <text x="570" y="160">1 · Region ▶</text><text class="small" x="570" y="175">Nash-optimal, agreed first</text></g>
+      <g class="clk" onclick="go(demoConsentPair)"><rect class="node gate" x="556" y="190" width="234" height="42" rx="8"/>
+        <text x="570" y="210">2 · Consent ▶</text><text class="small" x="570" y="225">mandate / delegation checked</text></g>
+      <g class="clk" onclick="go(demoEscrowLifecycle)"><rect class="node gate" x="556" y="240" width="234" height="42" rx="8"/>
+        <text x="570" y="260">3 · Escrow ▶</text><text class="small" x="570" y="275">release only on proof</text></g>
+      <g class="clk" onclick="go(demoBreachRecall)"><rect class="node gate" x="556" y="290" width="234" height="42" rx="8"/>
+        <text x="570" y="310">4 · Resolution ▶</text><text class="small" x="570" y="325">regime recall · law-cited disputes</text></g>
+
+      <!-- out to rails -->
+      <path class="arrow" d="M790 235 H 838"/>
+      <rect class="node" x="842" y="190" width="140" height="92" rx="10"/>
+      <text x="856" y="216">22 RAILS</text>
+      <text class="small" x="856" y="236">Pix · SEPA · FedNow</text>
+      <text class="small" x="856" y="252">UPI · FPS · NPP</text>
+      <text class="small" x="856" y="268">M-Pesa · x402 …</text>
+    </svg>
     </div>
   </div>
 </section>
@@ -640,6 +721,7 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
     <div>
       <h3>Explore</h3>
       <a class="f" href="#pain">Pain points</a>
+      <a class="f" href="#spectrum">Trust spectrum</a>
       <a class="f" href="#arch">Architecture &amp; flow</a>
       <a class="f" href="#components">Key components</a>
       <a class="f" href="#law">Legal taxonomy</a>
@@ -934,6 +1016,29 @@ async function demoDiscovery(){
   note('── DISCOVERY · what an agent sees at GET / (Accept: */*) ──');
   await call('GET','/');
   await call('GET','/stats');
+}
+
+// ---- trust-spectrum lane demos ----------------------------------------------------
+async function demoDelegate(){
+  const id = uid();
+  note('── SPECTRUM · agent→sub-agent: attenuated delegation ──');
+  await call('POST','/consent',{consent_id:'r-'+id, principal:'orch-'+id, budget:1000});
+  await call('POST','/m2m/delegate',{delegation_id:'sd-'+id, parent_consent_id:'r-'+id,
+    agent:'sub-'+id, budget:300});
+  await call('GET',`/m2m/delegation/sd-${id}`);
+  note('attenuation holds — asking for 500 from a 300 parent is refused:');
+  await call('POST','/m2m/delegate',{delegation_id:'sd2-'+id, parent_consent_id:'sd-'+id,
+    agent:'sub2-'+id, budget:500}, true);
+}
+async function demoHandshake(){
+  const id = uid();
+  note('── SPECTRUM · agent↔agent: one-call pact between strangers ──');
+  await call('POST','/m2m/handshake',{pact_id:'hs-'+id, buyer_agent:'buyer-'+id,
+    seller_agent:'seller-'+id, buyer_prefs:['eu_sepa','br_pix'],
+    seller_prefs:['br_pix','in_upi'], amount:150});
+  note('seller delivers, escrow releases — trade done, zero humans:');
+  await call('POST',`/escrow/pact-hs-${id}/deliver`,{proof:'delivered'});
+  await call('POST',`/escrow/pact-hs-${id}/release`);
 }
 
 // ---- M2M: machine-to-machine agentic trade ---------------------------------------

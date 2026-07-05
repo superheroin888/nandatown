@@ -668,6 +668,80 @@ app.add_middleware(
 )
 
 
+SCENARIOS: dict[str, dict[str, str]] = {
+    "human_to_agent": {
+        "label": "Human -> Agent",
+        "gate": "consent",
+        "pain": "an agent overspends the human's mandate on a final rail",
+        "flow": "POST /consent -> POST /pay {consent_id} (403 over budget)",
+    },
+    "agent_to_subagent": {
+        "label": "Agent -> Sub-agent",
+        "gate": "delegation (attenuated)",
+        "pain": "sub-agents exceed their delegator's authority; no chain control",
+        "flow": "POST /m2m/delegate (attenuated, chains to root) -> spend via "
+                "the delegation_id anywhere a consent_id works",
+    },
+    "agent_to_agent": {
+        "label": "Agent <-> Agent",
+        "gate": "handshake (Nash region + escrow)",
+        "pain": "two machines with no shared jurisdiction or trust trade blind",
+        "flow": "POST /m2m/handshake (Nash region + mandate + funded escrow) -> "
+                "/escrow/{id}/deliver -> /release",
+    },
+    "agent_to_resource": {
+        "label": "Agent -> Resource",
+        "gate": "x402 (consent-capped, replay-safe)",
+        "pain": "pay-per-call APIs on an irrevocable rail; replay + overspend risk",
+        "flow": "GET /x402/resource/{name} (402) -> retry with signed X-PAYMENT "
+                "(consent-capped, replay-safe)",
+    },
+}
+
+_SPECTRUM_ASCII = r"""
+ human ──(consent)────▶ agent ────────┐
+ agent ──(delegate)───▶ sub-agent ────┤    ┌───────────────────────┐
+ agent ◀─(handshake)──▶ agent ────────┼───▶│ TVIST — ONE GATE LOGIC │───▶ 22 rails
+ agent ──(x402)───────▶ resource ─────┘    │ region · consent ·     │     Pix · SEPA ·
+                                           │ escrow · recall/law    │     UPI · x402 …
+                                           └───────────────────────┘
+"""
+
+_SPECTRUM_MERMAID = (
+    "graph LR; H[Human] -->|consent| A[Agent]; "
+    "A -->|delegate, attenuated| S[Sub-agent]; "
+    "A <-->|handshake: Nash region + escrow| B[Counterparty agent]; "
+    "A -->|x402 X-PAYMENT| R[Paid resource]; "
+    "A --> G{{Tvist gates: region / consent / escrow / recall+law}}; "
+    "S --> G; B --> G; R --> G; G --> RAILS[22 rails: Pix, SEPA, UPI, x402]"
+)
+
+
+@app.get("/spectrum")
+def spectrum_view() -> dict[str, Any]:
+    """The full trust spectrum, visualised for machines.
+
+    Four relationships — human->agent, agent->sub-agent, agent<->agent,
+    agent->resource — all pass through the same four Tvist gates. Returned as
+    structured data plus ASCII and Mermaid renderings an agent (or a human on
+    a terminal) can display directly. The interactive version lives on the
+    homepage at /#spectrum.
+    """
+    return {
+        "one_gate_logic": [
+            "1 jurisdiction — Nash-optimal region, agreed before funds move",
+            "2 consent — mandate/delegation checked before settlement",
+            "3 escrow — funds release only on delivery proof",
+            "4 resolution — regime-gated recall + law-cited disputes",
+        ],
+        "relationships": SCENARIOS,
+        "ascii": _SPECTRUM_ASCII,
+        "mermaid": _SPECTRUM_MERMAID,
+        "try_it": "homepage /#spectrum — every lane is clickable and runs live",
+        "disclaimer": DISCLAIMER,
+    }
+
+
 _HERE = Path(__file__).resolve().parent
 _HOME = _HERE / "static" / "index.html"
 
@@ -843,31 +917,12 @@ def _index() -> dict[str, Any]:
         "what": "Escrow, consent, and dispute layer for AI agents. Notional credits (sandbox).",
         "skill": "See SKILL.md. OpenAPI at /openapi.json, interactive docs at /docs.",
         "disclaimer": DISCLAIMER,
-        "scenarios": {
-            "human_to_agent": {
-                "pain": "an agent overspends the human's mandate on a final rail",
-                "flow": "POST /consent -> POST /pay {consent_id} (403 over budget)",
-            },
-            "agent_to_subagent": {
-                "pain": "sub-agents exceed their delegator's authority; no chain control",
-                "flow": "POST /m2m/delegate (attenuated, chains to root) -> spend via "
-                        "the delegation_id anywhere a consent_id works",
-            },
-            "agent_to_agent": {
-                "pain": "two machines with no shared jurisdiction or trust trade blind",
-                "flow": "POST /m2m/handshake (Nash region + mandate + funded escrow) -> "
-                        "/escrow/{id}/deliver -> /release",
-            },
-            "agent_to_resource": {
-                "pain": "pay-per-call APIs on an irrevocable rail; replay + overspend risk",
-                "flow": "GET /x402/resource/{name} (402) -> retry with signed X-PAYMENT "
-                        "(consent-capped, replay-safe)",
-            },
-        },
+        "scenarios": SCENARIOS,
         "endpoints": {
             "GET /health": "liveness",
             "GET /stats": "live service metrics (accounts, settlements, escrows, funds)",
             "GET /disclaimer": "technical-demo / not-legal-advice disclaimer",
+            "GET /spectrum": "the four trust relationships + one-gate logic (ascii/mermaid/structured)",
             "GET /skill.md": "agent-facing SKILL.md (inline; ?download=1 for attachment)",
             "GET /readme.md": "service README (inline; ?download=1 for attachment)",
             "GET /view/skill": "SKILL.md rendered as HTML for humans",
