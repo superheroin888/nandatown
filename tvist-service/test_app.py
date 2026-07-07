@@ -451,6 +451,10 @@ def test_homepage_overview_and_map_wired(client: TestClient) -> None:
     assert 'id="esregion"' in html and 'id="esproof"' in html
     for fn in ("escOpen", "escDeliver", "escRelease", "escContest", "escRefund", "escStatus"):
         assert f'onclick="{fn}()"' in html
+    # sandbox identity: nav badge + URL placeholders filled with this origin
+    assert ">sandbox</span>" in html
+    assert html.count('class="g origin"') >= 4  # hero snippets + BASE line in #api
+    assert "location.origin" in html
 
 
 def test_homepage_has_playground_and_dual_use(client: TestClient) -> None:
