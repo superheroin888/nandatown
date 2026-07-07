@@ -132,7 +132,7 @@ transact.
 ```bash
 curl -s -X POST $BASE/consent -H 'content-type: application/json' \
   -d '{"consent_id":"c1","principal":"alice","budget":500}'
-# -> 200 {"stored":true,...}
+# -> {"consent_id":"c1","stored":true,"budget":500}
 ```
 
 ### Step 3 — pay within the consent
@@ -140,7 +140,7 @@ curl -s -X POST $BASE/consent -H 'content-type: application/json' \
 ```bash
 curl -s -X POST $BASE/pay -H 'content-type: application/json' \
   -d '{"ref":"p1","from_account":"alice","to_account":"shop","amount":300,"region":"br_pix","consent_id":"c1"}'
-# -> 200 {"settled":true,"irrevocable":true,...}
+# -> {"ref":"p1","settled":true,"irrevocable":true,"region":"br_pix","payer_balance":99700,"payee_balance":100300}
 ```
 
 A payment above the mandate is refused with `403` and no funds move:
@@ -214,7 +214,7 @@ regime): recall is always refused. Use escrow (step 4) or a consent cap
 ```bash
 # 7.1  Request without payment. The response is 402 and lists the requirements.
 curl -si $BASE/x402/resource/market-report | head -1     # HTTP/2 402
-curl -s  $BASE/x402/resource/market-report               # {"accepts":[{"scheme":"exact","payTo":"tvist-treasury","maxAmountRequired":25,...}]}
+curl -s  $BASE/x402/resource/market-report               # {"x402Version":1,"error":"X-PAYMENT header required","accepts":[{"scheme":"exact","network":"base-sepolia-sim","maxAmountRequired":25,"payTo":"tvist-treasury",...}]}
 
 # 7.2  Build the X-PAYMENT header: a base64-encoded JSON object with an
 #      EIP-3009-shaped authorization and a signature. Use a new nonce per payment.
@@ -303,9 +303,13 @@ curl -s -X POST $BASE/escrow/fare/release
    per region: `irrevocable`, `recall_allowed`, `recall_window_ticks`, and the
    valid `reason_codes`.
 3. If `POST /regions/recommend` returns `agreed_region: null`, do not transact.
-4. On an irrevocable region, prefer escrow (step 4) over direct payment: a
-   direct payment on an irrevocable region cannot be recalled unless the region
-   allows recall and the mandate was breached.
+4. The two region flags mean different things. `irrevocable: true` means the
+   sender cannot reverse a settled payment. Some irrevocable regions still
+   provide a scheme-level recall procedure (`recall_allowed: true`) within a
+   window; `POST /recall` uses that procedure and additionally requires a
+   consent breach. Where `recall_allowed` is `false` (for example `us_fednow`
+   and `stablecoin_x402`), no recall exists at all — use escrow (step 4)
+   instead of direct payment.
 5. Use a fresh nonce for every x402 payment. A reused nonce is refused.
 6. The API is discoverable at runtime: `GET /` and `GET /openapi.json` describe
    every endpoint. `GET /taxonomy` maps every reason code to one of 7 legal
