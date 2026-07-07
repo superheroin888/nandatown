@@ -447,6 +447,10 @@ def test_homepage_overview_and_map_wired(client: TestClient) -> None:
     assert "async function testApi()" in html
     assert html.count('onclick="go(testApi)"') == 2  # nav CTA + hero button
     assert 'onclick="testApi()"' in html             # playground button
+    # escrow builder: jurisdiction of choice + full lifecycle, all real calls
+    assert 'id="esregion"' in html and 'id="esproof"' in html
+    for fn in ("escOpen", "escDeliver", "escRelease", "escContest", "escRefund", "escStatus"):
+        assert f'onclick="{fn}()"' in html
 
 
 def test_homepage_has_playground_and_dual_use(client: TestClient) -> None:

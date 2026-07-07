@@ -93,7 +93,7 @@ failed>"}` with a 4xx status code.
 | `POST /consent` | `{consent_id, principal, budget, merchant_allowlist?}` | Store a spending mandate |
 | `POST /pay` | `{ref, from_account, to_account, amount, region, consent_id?}` | Settle a payment. If `consent_id` is given, the mandate is enforced. The response states whether the payment is irrevocable in that region |
 | `POST /escrow` | `{escrow_id, payer, payee, amount, region, condition_expected}` | Open an escrow and withdraw the amount from the payer |
-| `POST /escrow/{id}/deliver` | `{proof}` | Mark delivered. Succeeds only if `proof` equals `condition_expected` exactly |
+| `POST /escrow/{id}/deliver` | `{proof}` | Returns `{delivered:true}` only if `proof` equals `condition_expected` exactly; otherwise `{delivered:false}` (200) and the escrow stays undelivered, so release remains refused |
 | `POST /escrow/{id}/release` | — | Pay the payee. Refused with `403` unless the escrow is delivered |
 | `POST /escrow/{id}/contest` | — | Contest a funded escrow; a contested escrow cannot be released |
 | `POST /escrow/{id}/refund` | — | Return a contested escrow's funds to the payer |

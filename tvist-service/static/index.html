@@ -824,6 +824,46 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
     </div>
 
     <div class="card" style="margin-top:16px">
+      <span class="tag t">Live · POST /escrow → /deliver → /release · /contest → /refund</span>
+      <h3>🔒 Escrow builder — jurisdiction of your choice</h3>
+      <p>Open an escrow under any of the 22 regimes and walk it through its lifecycle. The
+      selected regime's escrow rule is shown below the selector. Selecting a jurisdiction on
+      the <a href="#map">globe</a> also sets it here. To see a refusal, release before
+      delivering, or deliver a proof that does not match the condition.</p>
+      <div class="grid g3" style="margin-top:12px">
+        <div>
+          <label for="esregion">Jurisdiction (of choice)</label>
+          <select id="esregion" onchange="escInfo()"><option>loading from /regions…</option></select>
+          <div class="result" id="esinfo" style="min-height:36px"></div>
+          <label for="esamount">Amount (credits)</label>
+          <input id="esamount" value="400">
+          <label for="escond">Condition the payee must prove</label>
+          <input id="escond" value="ticket_issued">
+        </div>
+        <div>
+          <label for="espayer">Payer</label>
+          <input id="espayer" value="alice">
+          <label for="espayee">Payee</label>
+          <input id="espayee" value="seller">
+          <label for="esproof">Delivery proof to submit</label>
+          <input id="esproof" value="ticket_issued">
+        </div>
+        <div>
+          <label>Lifecycle — each button is one real call</label>
+          <div class="btnrow" style="margin-top:4px">
+            <button class="btn mini solid" onclick="escOpen()">1 · Open + fund</button>
+            <button class="btn mini" onclick="escDeliver()">2 · Deliver proof</button>
+            <button class="btn mini" onclick="escRelease()">3 · Release</button>
+            <button class="btn mini" onclick="escContest()">Contest</button>
+            <button class="btn mini" onclick="escRefund()">Refund</button>
+            <button class="btn mini" onclick="escStatus()">Status</button>
+          </div>
+          <div class="result" id="esout" style="min-height:40px">no escrow open yet — click "1 · Open + fund"</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <h3 style="flex:1">Console — live requests &amp; responses</h3>
         <button class="btn mini" onclick="clearCon()">Clear</button>
@@ -1024,6 +1064,9 @@ async function refreshStats(){
     const lsel = document.getElementById('lawsel');
     lsel.innerHTML = sel.innerHTML;
     lsel.value = 'br_pix'; showLaw();
+    const esel = document.getElementById('esregion');
+    esel.innerHTML = sel.innerHTML;
+    esel.value = 'br_pix'; escInfo();
   }catch(e){ document.getElementById('regout').textContent = 'could not load /regions'; }
   try{
     const tax = await (await fetch('/taxonomy')).json();
@@ -1121,6 +1164,74 @@ async function stepDeliver(){
     amount:300,region:'br_pix',condition_expected:'delivered'});
   await call('POST',`/escrow/e-${id}/deliver`,{proof:'delivered'});
   await call('GET',`/escrow/e-${id}`);
+}
+
+// ---- escrow builder: lifecycle under a jurisdiction of choice ------------------
+let _escrow = null;   // {id, region} of the escrow currently being walked
+function escInfo(){
+  const k = document.getElementById('esregion').value, r = (window._regions||{})[k];
+  const out = document.getElementById('esinfo');
+  if (!r){ out.textContent = ''; return; }
+  out.innerHTML =
+    `escrow rule: ${r.requires_delivery_for_escrow
+       ? '<span class="ok">delivery proof required before release</span>'
+       : 'release gate applies (permissive regime)'}` +
+    ` · irrevocable: ${r.irrevocable}` +
+    ` · recall: <span class="${r.recall_allowed?'ok':'no'}">${r.recall_allowed?'allowed':'not allowed'}</span>`;
+}
+function escSet(msg, ok){
+  const out = document.getElementById('esout');
+  out.className = 'result ' + (ok ? 'ok' : 'bad'); out.innerHTML = msg;
+}
+async function escOpen(){
+  const region = document.getElementById('esregion').value;
+  const id = 'ui-' + uid();
+  note(`── ESCROW BUILDER · open under ${region} ──`);
+  const r = await call('POST', '/escrow', {
+    escrow_id: id,
+    payer: document.getElementById('espayer').value.trim(),
+    payee: document.getElementById('espayee').value.trim(),
+    amount: Number(document.getElementById('esamount').value),
+    region,
+    condition_expected: document.getElementById('escond').value.trim(),
+  });
+  if (r.status === 200){ _escrow = {id, region};
+    escSet(`escrow <b>${id}</b> FUNDED under ${region} — funds held. Next: deliver the proof.`, true);
+  } else escSet(`open failed (${r.status}) — see console`, false);
+}
+async function escDeliver(){
+  if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
+  const proof = document.getElementById('esproof').value.trim();
+  const expectFail = proof !== document.getElementById('escond').value.trim();
+  const r = await call('POST', `/escrow/${_escrow.id}/deliver`, {proof}, expectFail);
+  if (r.status === 200 && r.data.delivered === true)
+    escSet('delivered — proof matched the condition. Next: release.', true);
+  else
+    escSet('not delivered — the proof does not equal the condition, so release stays blocked', false);
+}
+async function escRelease(){
+  if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
+  const r = await call('POST', `/escrow/${_escrow.id}/release`, null, true);
+  if (r.status === 200) escSet(`RELEASED — payee paid under ${_escrow.region}. Open another to repeat.`, true);
+  else escSet(`release refused (${r.status}) — not delivered (or contested)`, false);
+}
+async function escContest(){
+  if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
+  const r = await call('POST', `/escrow/${_escrow.id}/contest`);
+  if (r.status === 200) escSet('CONTESTED — release is blocked; refund returns the funds to the payer', true);
+  else escSet(`contest refused (${r.status}) — see console`, false);
+}
+async function escRefund(){
+  if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
+  const r = await call('POST', `/escrow/${_escrow.id}/refund`);
+  if (r.status === 200) escSet('REFUNDED — payer made whole. Open another to repeat.', true);
+  else escSet(`refund refused (${r.status}) — only a contested escrow can be refunded`, false);
+}
+async function escStatus(){
+  if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
+  const r = await call('GET', `/escrow/${_escrow.id}`);
+  if (r.status === 200) escSet(`status: <b>${r.data.status}</b> · amount ${r.data.amount} · region ${_escrow.region}`, true);
+  else escSet(`status failed (${r.status})`, false);
 }
 
 // ---- one-click API self-test (nav + hero "Test the API" buttons) ---------------
@@ -1552,6 +1663,8 @@ function toggleSuggest(){
 async function selectRegion(k, scroll = true){
   G.sel = k; drawGlobe();
   document.querySelectorAll('.gchip').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+  const esel = document.getElementById('esregion');   // the escrow builder follows the choice
+  if (esel && [...esel.options].some(o => o.value === k)){ esel.value = k; escInfo(); }
   const title = document.getElementById('maptitle'), out = document.getElementById('mapout'),
         cl = document.getElementById('clauses');
   if (scroll){   // if the details panel is off-screen (stacked layout), bring it into view
