@@ -1,7 +1,7 @@
 # NANDA Town skills-page submission — Tvist API
 
 > Copy-paste package for https://nandatown.projectnanda.org (skills page).
-> Before submitting: replace `<BASE>` everywhere with the **permanent** URL
+> Before submitting: replace `https://deputy-increasingly-tutorial-contractors.trycloudflare.com` everywhere with the **permanent** URL
 > (after `railway up` / `fly launch` / Render) — or, for a quick test, with the
 > current sandbox tunnel printed by:
 > `grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' ~/Library/Logs/tvist-tunnel.log | tail -1`
@@ -23,22 +23,22 @@ one-call agent↔agent pacts) — all behind one no-auth, dual-use URL.
 
 ## Live endpoint links
 
-- Base / JSON index (agents) & animated homepage (humans): `<BASE>/`
-- Health: `<BASE>/health` · Live metrics: `<BASE>/stats`
-- SKILL.md (the agent contract): `<BASE>/skill.md`
-- OpenAPI: `<BASE>/openapi.json` · Swagger: `<BASE>/docs`
-- Jurisdictions: `<BASE>/regions` · Legal taxonomy: `<BASE>/taxonomy`
-- x402 demo resource (402 flow): `<BASE>/x402/resource/market-report`
+- Base / JSON index (agents) & animated homepage (humans): `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/`
+- Health: `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/health` · Live metrics: `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/stats`
+- SKILL.md (the agent contract): `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/skill.md`
+- OpenAPI: `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/openapi.json` · Swagger: `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/docs`
+- Jurisdictions: `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/regions` · Legal taxonomy: `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/taxonomy`
+- x402 demo resource (402 flow): `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/x402/resource/market-report`
 
 ## SKILL.md
 
-Hosted at `<BASE>/skill.md` (raw) / `<BASE>/view/skill` (rendered).
+Hosted at `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/skill.md` (raw) / `https://deputy-increasingly-tutorial-contractors.trycloudflare.com/view/skill` (rendered).
 Also in the repo: `tvist-service/SKILL.md`.
 
 ## 30-second proof for judges (copy-paste)
 
 ```bash
-BASE=<BASE>
+BASE=https://deputy-increasingly-tutorial-contractors.trycloudflare.com
 # Nash-optimal jurisdiction for two parties who want different things
 curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
   -d '{"client_prefs":["eu_sepa","br_pix","in_upi"],"agent_prefs":["in_upi","br_pix","eu_sepa"]}'

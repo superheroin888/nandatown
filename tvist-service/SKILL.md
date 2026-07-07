@@ -42,7 +42,7 @@ One gate logic covers all four trust relationships:
 ## Base URL
 
 ```
-https://organizing-quiz-commentary-enhancing.trycloudflare.com
+https://deputy-increasingly-tutorial-contractors.trycloudflare.com
 ```
 
 - Health: `GET /health` → `{"status":"ok"}`
@@ -82,7 +82,7 @@ All request/response bodies are JSON. Errors return `{"error": "..."}` with a
 Set the base URL once:
 
 ```bash
-BASE=https://organizing-quiz-commentary-enhancing.trycloudflare.com
+BASE=https://deputy-increasingly-tutorial-contractors.trycloudflare.com
 ```
 
 ### 1. Agree the governing jurisdiction (game-theoretic)
@@ -232,7 +232,7 @@ move. A delegation id works anywhere a `consent_id` does (`/pay`, x402
 ## Full worked example — an agent books travel for its principal
 
 ```bash
-BASE=https://organizing-quiz-commentary-enhancing.trycloudflare.com
+BASE=https://deputy-increasingly-tutorial-contractors.trycloudflare.com
 # 1. principal + agent agree a jurisdiction
 curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
   -d '{"client_prefs":["in_upi"],"agent_prefs":["in_upi"]}'          # -> in_upi
