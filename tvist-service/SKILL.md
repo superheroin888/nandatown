@@ -111,7 +111,7 @@ failed>"}` with a 4xx status code.
 | `GET /stats` | — | Current counts: accounts, settlements, recalls, escrows, held credits, disputes, x402 settlements, total funds |
 | `GET /disclaimer` | — | The not-legal-advice disclaimer as JSON |
 
-## Steps to use (copy-paste curl)
+## How an agent should use this — steps (copy-paste curl)
 
 Set the base URL once:
 
