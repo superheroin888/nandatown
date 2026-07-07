@@ -117,11 +117,16 @@ holds are invariant), so the whole system is auditable by replay.
   in MIT/NANDA's Nanda Town agent test rig: 4 swarm scenarios, 10 adversarial
   validators. Every attack (unilateral clawback, escrow drain, over-mandate
   spend, friendly-fraud refund, off-regime dispute) **fails against the default
-  ledger and is blocked by Tvist** on identical scenarios. 535 tests green.
+  ledger and is blocked by Tvist** on identical scenarios. 586 tests green.
 - **Live, dual-use service.** The same logic runs as a hosted API + animated
-  site with an in-page playground; agents integrate from a single SKILL.md —
-  30 endpoints incl. the legal-taxonomy, x402, M2M, and trust-spectrum
-  surfaces (56 endpoint tests green; 595 tests green across the project).
+  site with an in-page playground, an executive-summary teaser, an interactive
+  jurisdiction globe whose per-region legal clauses load live from the API, a
+  Nash cooperation visualizer (1–1, 1–n, n–n — one real recommend call per
+  pair), and a suggested-start jurisdiction from `GET /regions/suggest`
+  (timezone/locale; IP echoed, not geolocated). Agents integrate from a single
+  SKILL.md — 33 endpoints incl. the legal-taxonomy, x402, M2M, region-suggest,
+  and trust-spectrum surfaces (61 endpoint tests green; 647 tests green across
+  the project).
 - **Flagship use case.** DigiDoot — "a personal AI agent for every Indian
   citizen" — maps 1:1 onto Tvist as its settlement endpoint: Aadhaar-style
   consent → intent vault, UPI → regime, service journeys → escrow/recall.

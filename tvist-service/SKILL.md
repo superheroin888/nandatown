@@ -54,7 +54,13 @@ The same checks apply to all four payment relationships:
 - No authentication, no API keys, no signup.
 - The same base URL serves both audiences: a browser requesting `GET /` with
   `Accept: text/html` receives an HTML page; any other client receives the
-  JSON endpoint index. The API behaves identically for both.
+  JSON endpoint index. The API behaves identically for both. The HTML page is
+  driven by the same endpoints an agent calls: an executive-summary teaser, a
+  live playground, an interactive jurisdiction globe whose per-region clauses
+  load from `GET /regions/{region}/legal`, a Nash cooperation visualizer
+  (1–1, 1–n, n–n; one `POST /regions/recommend` per pair), a suggested-start
+  chip from `GET /regions/suggest`, and downloads for this file and the
+  executive-summary documents.
 - CORS is open (`Access-Control-Allow-Origin: *`); browser-based clients can
   call every endpoint. The `X-PAYMENT-RESPONSE` header is exposed to browsers.
 - **Not legal advice.** This is a technical demonstration. Legal references
