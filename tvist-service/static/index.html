@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tvist API — escrow, consent &amp; dispute for AI agents</title>
-<meta name="description" content="Tvist.ai — the settlement-trust layer for agentic commerce. Nash-optimal jurisdiction, consent vault, programmable escrow, region-aware recall. Dual-use: humans and agents.">
+<meta name="description" content="Tvist API: an HTTP service for AI agents that send payments. It agrees a dispute jurisdiction, enforces the principal's spending consent, holds funds in escrow until delivery, allows recall only on proof of consent breach, and validates dispute reason codes with legal citations. The same URL serves HTML to browsers and JSON to agents.">
 <style>
 :root{
   --bg:#0b1020; --bg2:#101736; --card:#151d3f; --line:#26305e;
@@ -145,12 +145,14 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
 <section>
   <div class="wrap">
     <span class="pill"><span class="dot" id="statusdot"></span> <span id="statustxt">checking service…</span> · no auth · notional credits · <b style="color:var(--teal)">dual-use: humans &amp; agents</b></span>
-    <h1>The <span class="grad">settlement-trust layer</span><br>for agentic commerce.</h1>
+    <h1><span class="grad">Consent, escrow, recall &amp; disputes</span><br>for payments made by AI agents.</h1>
     <p class="sub" style="margin-top:18px;font-size:18px">
-      AI agents are starting to move money on people's behalf — over instant rails that are
-      <b>irrevocable by design</b>. Tvist is the missing layer between "the agent paid" and
-      "the human is protected": jurisdiction chosen up front, consent enforced, funds escrowed
-      until delivery, recalls only on proof.
+      Tvist is one HTTP API. Before an agent pays, four checks run in a fixed order:
+      <b>1)</b> both parties agree the governing jurisdiction, <b>2)</b> the payment is checked
+      against the principal's recorded consent, <b>3)</b> funds are held in escrow until delivery
+      is proven, <b>4)</b> a settled payment can be recalled only where the jurisdiction allows it
+      and the consent was breached. Each check is one endpoint. Every button on this page sends a
+      real request to the live service.
     </p>
     <div class="btnrow">
       <a class="btn solid" href="#try">▶ Test the API live</a>
@@ -164,11 +166,11 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
       <h3>One URL. Two audiences. Same contract.</h3>
       <p style="color:var(--mut);font-size:14px;margin-top:6px">
         This site is served by the API itself via content negotiation on <code>GET /</code>:
-        a <b>browser</b> (Accept: text/html) gets this page — an <b>agent or curl</b>
-        (Accept: */*) gets the machine-readable JSON endpoint index. Humans click the live
-        widgets below; agents read <a href="/skill.md">SKILL.md</a> +
-        <a href="/openapi.json">OpenAPI</a> and drive the exact same endpoints. Nothing on
-        this page is mocked — every number and every button is the live API.
+        a <b>browser</b> (Accept: text/html) gets this page; an <b>agent or curl</b>
+        (Accept: */*) gets the JSON endpoint index. Humans use the widgets below; agents read
+        <a href="/skill.md">SKILL.md</a> and <a href="/openapi.json">OpenAPI</a> and call the
+        same endpoints. Every button on this page sends a real HTTP request to this service;
+        every number is read from <code>GET /stats</code> or <code>GET /openapi.json</code>.
       </p>
       <div class="grid g2" style="margin-top:14px">
         <pre style="margin:0"><span class="c"># humans (browser)</span>
@@ -181,7 +183,7 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 
     <div class="metrics" title="hydrated live from GET /stats and GET /openapi.json">
       <div class="metric"><div class="n" id="m-regions" data-count="22">0</div><div class="l">jurisdictions · live from <code>/stats</code></div></div>
-      <div class="metric"><div class="n" id="m-endpoints" data-count="18">0</div><div class="l">endpoints · live from <code>/openapi.json</code></div></div>
+      <div class="metric"><div class="n" id="m-endpoints" data-count="32">0</div><div class="l">endpoints · live from <code>/openapi.json</code></div></div>
       <div class="metric"><div class="n" data-count="4">0</div><div class="l">protection gates</div></div>
       <div class="metric"><div class="n" id="m-accounts" data-count="0">0</div><div class="l">accounts · live from <code>/stats</code></div></div>
       <div class="metric"><div class="n" id="m-settlements" data-count="0">0</div><div class="l">settlements · live from <code>/stats</code></div></div>
@@ -193,38 +195,50 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 <section id="pain">
   <div class="wrap reveal">
     <div class="kicker">Why this exists</div>
-    <h2>Five pain points a plain "send money" call can't solve</h2>
-    <p class="sub">Everyone built agent-payment rails. Nobody built the dispute &amp; escrow layer
-    across them. Each card has a <b>Prove it live</b> button — it fires the real attack at the
-    real API and shows the gate holding, in the console below.</p>
+    <h2>Five failure cases, and the check that stops each one</h2>
+    <p class="sub">These are the failure cases when an AI agent pays over instant payment rails.
+    Each card names the failure and the Tvist check that refuses it. The <b>Run it</b> button
+    sends the failing request to this API and prints the refusal in the console (section
+    <a href="#try">Try live</a>).</p>
     <div class="grid g2">
-      <div class="card"><span class="tag c">Pain 1 · Irrevocability</span>
-        <h3>Push payments don't come back</h3>
-        <p>Pix, SEPA Instant, FedNow, UPI settle in seconds and are final. A wrong or fraudulent
-        agent payment is gone — unless a lawful recall path existed <i>before</i> the money moved.</p>
-        <div class="btnrow"><button class="btn mini" onclick="go(atkFednow)">⚡ Prove it live — FedNow refuses recall</button></div></div>
-      <div class="card"><span class="tag c">Pain 2 · Intent ambiguity</span>
-        <h3>"Did the human actually authorise this?"</h3>
-        <p>When agents transact, the dominant dispute becomes mandate scope. Without a consent
-        vault, there's no proof of what the principal approved — and no basis to refuse or recall.</p>
-        <div class="btnrow"><button class="btn mini" onclick="go(atkConsent)">⚡ Prove it live — over-consent → 403</button></div></div>
-      <div class="card"><span class="tag c">Pain 3 · Jurisdiction chaos</span>
-        <h3>Every rail speaks a different dispute language</h3>
-        <p>Pix MED 2.0 gives 11 days to recover; SEPA has SCT-Inst recall; FedNow has <b>no</b>
-        federal recall standard. Reason codes don't translate. Agents need one canonical map.</p>
-        <div class="btnrow"><button class="btn mini" onclick="go(atkReason)">⚡ Prove it live — Pix code rejected under UPI</button></div></div>
-      <div class="card"><span class="tag c">Pain 4 · Blind prepayment</span>
-        <h3>Paying before delivery, on a final rail</h3>
-        <p>An agent that prepays on an irrevocable rail has zero leverage if the service never
-        arrives. Escrow — hold until delivery is provable — is the natural construct. Nobody ships
-        it rail-agnostically.</p>
-        <div class="btnrow"><button class="btn mini" onclick="go(atkEscrow)">⚡ Prove it live — escrow drain blocked</button></div></div>
-      <div class="card"><span class="tag c">Pain 5 · Machine-to-machine trust</span>
-        <h3>Agent swarms have no authority chain</h3>
-        <p>Agents now delegate to sub-agents and trade with agents they've never met — with no
-        enforcement that a sub-agent stays inside its delegator's authority, and no shared
-        jurisdiction between two machines. One rogue sub-agent unwinds the whole chain of trust.</p>
-        <div class="btnrow"><button class="btn mini" onclick="go(atkM2M)">⚡ Prove it live — over-delegation + no-region pact refused</button></div></div>
+      <div class="card"><span class="tag c">Case 1 · Irrevocability</span>
+        <h3>Instant payments cannot be reversed by the sender</h3>
+        <p>Pix, SEPA Instant, FedNow, and UPI settle in seconds and are final. If an agent pays
+        the wrong party, the money is not recoverable afterwards.
+        <b>Check:</b> <code>POST /recall</code> reverses a payment only where the region's rules
+        allow recall and the payment breached the recorded consent.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkFednow)">▶ Run it — FedNow recall is refused</button></div></div>
+      <div class="card"><span class="tag c">Case 2 · No consent record</span>
+        <h3>No stored record of what the human authorised</h3>
+        <p>Without a stored mandate (budget, allowed merchants) there is no basis to refuse an
+        out-of-scope payment before it settles, and no basis to recall it after.
+        <b>Check:</b> <code>POST /consent</code> stores the mandate; <code>POST /pay</code>
+        refuses any payment outside it with <code>403</code>, before funds move.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkConsent)">▶ Run it — payment over consent returns 403</button></div></div>
+      <div class="card"><span class="tag c">Case 3 · Rule differences per rail</span>
+        <h3>Each rail has different dispute rules</h3>
+        <p>Pix MED allows a recovery request for 11 days. SEPA has the SCT Inst recall procedure.
+        FedNow has no recall procedure. Reason codes are not portable between rails.
+        <b>Check:</b> <code>GET /regions</code> lists all 22 regimes; <code>POST /dispute</code>
+        accepts a reason code only if it is valid in the agreed region.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkReason)">▶ Run it — Pix code rejected under UPI</button></div></div>
+      <div class="card"><span class="tag c">Case 4 · Prepayment risk</span>
+        <h3>Paying before delivery on a final rail</h3>
+        <p>An agent that prepays on an irrevocable rail has no remedy if the goods or service
+        never arrive.
+        <b>Check:</b> <code>POST /escrow</code> holds the funds;
+        <code>POST /escrow/{id}/release</code> pays the payee only after the posted delivery
+        proof equals the agreed condition.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkEscrow)">▶ Run it — release before delivery returns 403</button></div></div>
+      <div class="card"><span class="tag c">Case 5 · Machine-to-machine authority</span>
+        <h3>Delegation and agent-to-agent trade are unenforced</h3>
+        <p>When an agent delegates spending to sub-agents, nothing enforces that a sub-agent stays
+        within its delegator's budget. Two agents that have never interacted share no agreed
+        jurisdiction.
+        <b>Check:</b> <code>POST /m2m/delegate</code> refuses a delegation larger than its
+        parent's budget; <code>POST /m2m/handshake</code> refuses a trade when no shared region
+        exists.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkM2M)">▶ Run it — over-delegation and no-region pact refused</button></div></div>
     </div>
   </div>
 </section>
@@ -233,11 +247,13 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 <section id="spectrum">
   <div class="wrap reveal">
     <div class="kicker">The trust spectrum · live from GET /spectrum</div>
-    <h2>Four relationships. One gate logic.</h2>
-    <p class="sub">Everything an economy of agents does reduces to four trust relationships —
-    and every one of them passes through the same four Tvist gates before value moves.
-    <b>Click any lane</b> to run that relationship live in the console; agents get the same
-    picture as data at <a href="/spectrum">GET /spectrum</a> (structured + ASCII + Mermaid).</p>
+    <h2>Four payment relationships. The same four checks.</h2>
+    <p class="sub">The API covers four payment relationships: human→agent, agent→sub-agent,
+    agent↔agent, and agent→paid resource. Each one passes the same four checks — region,
+    consent, escrow, resolution — before funds move. <b>Click a lane</b> to send that
+    relationship's requests to the API and see the responses in the console. Agents can read
+    the same structure as data at <a href="/spectrum">GET /spectrum</a> (JSON, ASCII, and
+    Mermaid).</p>
 
     <div class="flowbox">
     <svg class="flow" viewBox="0 0 1000 452" width="100%" role="img" aria-label="Four trust relationships — human to agent, agent to sub-agent, agent to agent, agent to resource — all converge through the Tvist gate stack onto 22 rails. Every lane is clickable and runs live.">
@@ -313,10 +329,11 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 <section id="arch">
   <div class="wrap reveal">
     <div class="kicker">Architecture</div>
-    <h2>One transaction, four gates — click any node to run it</h2>
-    <p class="sub">Every payment walks the same pipeline. Green arrows are the happy path;
-    red arrows are attacks the gates refuse. <b>Every node and gate is clickable</b> — it fires
-    the corresponding real calls and streams the responses into the console.</p>
+    <h2>One transaction, five steps — click any node to run it</h2>
+    <p class="sub">Every payment follows the same sequence: negotiate region → record consent →
+    open escrow → deliver proof → release. Green arrows show the sequence when every check
+    passes. Red arrows show requests that a check refuses. <b>Every node is clickable</b> — it
+    sends the corresponding requests to the API and prints the responses in the console.</p>
 
     <div class="flowbox">
     <svg class="flow" viewBox="0 0 1000 470" width="100%" role="img" aria-label="Tvist transaction pipeline: negotiate region, check consent, escrow, deliver, release; attacks are blocked at each gate. All nodes clickable — they run live API calls.">
@@ -444,16 +461,18 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 <section id="components">
   <div class="wrap reveal">
     <div class="kicker">Key components</div>
-    <h2>Five primitives, one API surface — every card runs live</h2>
+    <h2>Seven components, one API — each card's button runs it live</h2>
     <div class="grid g2">
       <div class="card"><span class="tag i">Component</span><h3>🗺️ Region recommender</h3>
         <p><code>POST /regions/recommend</code> — reads each party's ranked list as ordinal utilities and returns
-        the <b>Nash bargaining solution</b>: max u<sub>client</sub>·u<sub>agent</sub>, tie-broken by maximin fairness.
-        Client wants SEPA, agent wants UPI? It finds Pix — the fair middle. <code>null</code> = don't transact.</p>
+        the <b>Nash bargaining solution</b>: the region maximising u<sub>client</sub>·u<sub>agent</sub>, ties broken by maximin.
+        Example: client ranks SEPA first, agent ranks UPI first, both rank Pix second — the result is Pix.
+        <code>agreed_region: null</code> means no shared region: do not transact.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(stepRecommend)">▶ Try it</button></div></div>
       <div class="card"><span class="tag i">Component</span><h3>🔏 Consent vault</h3>
-        <p><code>POST /consent</code> + enforcement inside <code>/pay</code>. A payment above the budget or off
-        the allowlist is refused with <code>403</code> before funds move — the DigiDoot "explicit consent" model.</p>
+        <p><code>POST /consent</code> stores the principal's budget and optional merchant allowlist;
+        <code>POST /pay</code> enforces it. A payment above the budget or to a merchant not on the
+        allowlist is refused with <code>403</code> before funds move.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoConsentPair)">▶ Try it — in-budget ✓ then over-budget ✗</button></div></div>
       <div class="card"><span class="tag i">Component</span><h3>🔒 Programmable escrow</h3>
         <p><code>POST /escrow → /deliver → /release</code>. Funds leave the payer at open, reach the payee only
@@ -465,21 +484,23 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
         <div class="btnrow"><button class="btn mini" onclick="go(demoBreachRecall)">▶ Try it — justified recall succeeds</button></div></div>
       <div class="card"><span class="tag i">Component</span><h3>⚖️ Dispute taxonomy</h3>
         <p><code>POST /dispute</code> — accepts a case only if the reason code is valid in the agreed region.
-        <code>pix_med_return</code> under UPI? Rejected. The canonical cross-rail translation table.</p>
+        Example: <code>pix_med_return</code> is rejected under <code>in_upi</code>. <code>GET /taxonomy</code>
+        maps every reason code to one of 7 legal categories.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoDisputePair)">▶ Try it — valid ✓ then invalid ✗</button></div></div>
       <div class="card"><span class="tag i">Component</span><h3>🤖⇄🤖 Machine-to-machine trade</h3>
-        <p><code>POST /m2m/delegate</code> + <code>POST /m2m/handshake</code> — pure agent↔agent commerce
-        on the same gates: <b>attenuated delegation chains</b> (a sub-agent's budget can never exceed
-        its delegator's; traces to the root mandate) and a <b>one-call pact</b> — Nash region +
-        mandate check + atomically funded escrow. No human in the loop; every refusal lands
-        before funds move.</p>
+        <p><code>POST /m2m/delegate</code>: an agent delegates part of its budget to a sub-agent.
+        A delegation larger than its parent's budget is refused with <code>403</code>; every chain
+        traces to one root consent. <code>POST /m2m/handshake</code>: one call agrees the region,
+        checks the mandate, and opens a funded escrow between two agents. Refusals (<code>409</code>
+        no shared region, <code>403</code> over mandate) happen before funds move.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoM2M)">▶ Try it — delegate → pact → deliver → paid</button>
         <button class="btn mini" onclick="go(atkM2M)">⛔ Over-delegation + no-region pact</button></div></div>
       <div class="card"><span class="tag i">Component</span><h3>⚡ x402 on-rail payments</h3>
-        <p><code>GET /x402/resource/…</code> — the HTTP-native agent rail: <b>402 Payment Required</b>
-        with structured requirements, retry with a signed <code>X-PAYMENT</code> header, receive the
-        resource + an <code>X-PAYMENT-RESPONSE</code> receipt. Irrevocable regime; replays rejected;
-        the principal's consent cap holds <b>even on-chain</b>.</p>
+        <p><code>GET /x402/resource/…</code> — pay-per-request over HTTP: the first request returns
+        <b>402 Payment Required</b> with the price and payee; the retry carries a signed
+        <code>X-PAYMENT</code> header and returns the resource plus an <code>X-PAYMENT-RESPONSE</code>
+        receipt. Each nonce settles once (replays refused). If the payment names a
+        <code>consent_id</code>, the budget is checked before settlement.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoX402)">▶ Try it — 402 → pay → 200</button>
         <button class="btn mini" onclick="go(atkX402)">⛔ Replay + over-consent</button></div></div>
       <div class="card"><span class="tag a">Meta</span><h3>🤖 Self-describing for agents</h3>
@@ -494,13 +515,13 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 <section id="law">
   <div class="wrap reveal">
     <div class="kicker">Legal taxonomy · live from GET /taxonomy</div>
-    <h2>Every dispute code is grounded in civil &amp; commercial law</h2>
-    <p class="sub">Tvist's reason codes aren't arbitrary strings — each maps to a substantive
-    legal category with its civil-law and common-law doctrinal basis, and every one of the 22
-    jurisdictions carries its <b>operative statutes, scheme rulebooks, and regulator</b> with
-    links to the official legal source. Agents cite the <code>operative_basis</code> when they
-    file — an accepted <code>/dispute</code> returns the citation string inline; humans can
-    verify every claim at the primary source.</p>
+    <h2>Every dispute reason code maps to civil &amp; commercial law</h2>
+    <p class="sub">Each reason code maps to one of 7 legal categories, each with its civil-law
+    and common-law basis. Each of the 22 jurisdictions lists its <b>statutes, scheme rulebooks,
+    and regulator</b>, with a link to the official source for each instrument. An accepted
+    <code>POST /dispute</code> returns the citation string in the response
+    (<code>legal_basis.citation</code>); the full per-region list is at
+    <code>GET /regions/{region}/legal</code>.</p>
     <p class="sub" style="margin-top:10px;font-size:13px;font-style:italic;border-left:3px solid var(--amber);padding-left:12px">
     ⚠️ Disclaimer: technical demonstration only — a notional-credits sandbox, not a bank,
     payment institution, or law firm. Legal references cite real primary sources but are
@@ -533,7 +554,7 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 <section id="personas">
   <div class="wrap reveal">
     <div class="kicker">Personas</div>
-    <h2>Who calls Tvist — play each persona live</h2>
+    <h2>Four callers — each button runs that caller's requests</h2>
     <div class="grid g2">
       <div class="card"><span class="tag t">Persona</span><h3>🛒 The shopping / booking agent</h3>
         <p><b>Job:</b> spends its principal's money on flights, goods, subscriptions.<br>
@@ -546,14 +567,17 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
         <b>With Tvist:</b> the 900 charge is a <code>403</code>; a slipped-through breach is recalled.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoPrincipal)">▶ Play this persona</button></div></div>
       <div class="card"><span class="tag t">Persona</span><h3>🏪 The service-provider agent</h3>
-        <p><b>Job:</b> sells to agents it has never met.<br>
-        <b>Without Tvist:</b> ships first and prays, or demands prepay and loses sales.<br>
-        <b>With Tvist:</b> sees funds locked in escrow before shipping; paid the instant proof lands.</p>
+        <p><b>Job:</b> sells to agents it has never interacted with.<br>
+        <b>Without Tvist:</b> either ships before payment and risks non-payment, or requires
+        prepayment and the buyer carries the risk.<br>
+        <b>With Tvist:</b> confirms funds are held in escrow before shipping; is paid when the
+        delivery proof is accepted.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoProvider)">▶ Play this persona</button></div></div>
       <div class="card"><span class="tag t">Persona</span><h3>🏛️ The marketplace / platform</h3>
-        <p><b>Job:</b> hosts thousands of agent↔agent trades across borders.<br>
-        <b>Without Tvist:</b> hand-rolls dispute rules per corridor, per rail, per regulator.<br>
-        <b>With Tvist:</b> one call returns the jointly-optimal jurisdiction and its full regime.</p>
+        <p><b>Job:</b> hosts agent↔agent trades across borders.<br>
+        <b>Without Tvist:</b> must implement dispute rules separately for each rail, corridor,
+        and regulator.<br>
+        <b>With Tvist:</b> one call returns the agreed jurisdiction and its full dispute regime.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(stepRecommend)">▶ Play this persona</button></div></div>
     </div>
   </div>
@@ -563,7 +587,7 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 <section id="usecases">
   <div class="wrap reveal">
     <div class="kicker">Use cases</div>
-    <h2>From a travel booking to a national-scale agent network — run each one</h2>
+    <h2>Eight use cases — each button runs the listed calls</h2>
     <div class="grid g3">
       <div class="card"><span class="tag a">Use case</span><h3>✈️ Escrowed travel booking</h3>
         <p>Agent escrows the fare; airline is paid only when <code>ticket_issued</code> lands. The SKILL.md
@@ -586,9 +610,9 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
         refused, not refunded-after-the-fact.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoSubscription)">▶ Run</button></div></div>
       <div class="card"><span class="tag a">Use case</span><h3>🤖⇄🤖 Agent-swarm procurement</h3>
-        <p>An orchestrator agent delegates attenuated budgets to sub-agents, which form one-call
-        pacts with seller agents — Nash region, mandate check, funded escrow — and finish on
-        delivery proof. Zero humans in the loop.</p>
+        <p>An orchestrator agent delegates bounded budgets to sub-agents. Each sub-agent sets up
+        a trade with a seller agent in one call (region + mandate + funded escrow) and completes
+        it on delivery proof. No human is involved in any step.</p>
         <div class="btnrow"><button class="btn mini" onclick="go(demoM2M)">▶ Run</button></div></div>
       <div class="card"><span class="tag a">Use case</span><h3>⚡ Pay-per-call agent APIs</h3>
         <p>An agent buys a paid resource over x402 — 402 challenge, signed <code>X-PAYMENT</code>,
@@ -606,9 +630,9 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 <section id="api">
   <div class="wrap reveal">
     <div class="kicker">API</div>
-    <h2>Eighteen endpoints. Every snippet below is runnable.</h2>
+    <h2>32 endpoints. Every snippet below is runnable — ▶ run sends it from this page.</h2>
 <pre>
-<span class="c"># the fair jurisdiction for two parties who want different things</span>  <button class="btn mini" onclick="go(stepRecommend)">▶ run</button>
+<span class="c"># Nash-optimal jurisdiction for two parties with different rankings</span>  <button class="btn mini" onclick="go(stepRecommend)">▶ run</button>
 curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
   -d '{"client_prefs":["eu_sepa","br_pix","in_upi"],"agent_prefs":["in_upi","br_pix","eu_sepa"]}'
 <span class="g">→ {"agreed_region":"br_pix","method":"nash_bargaining","naive_client_first":"eu_sepa"}</span>
@@ -622,7 +646,7 @@ curl -s -X POST $BASE/pay -d '{"ref":"p2","from_account":"alice","to_account":"s
 curl -s -X POST $BASE/escrow/e1/release
 <span class="r">→ 403 {"error":"release condition not satisfied (not delivered)"}</span>
 
-<span class="c"># mandate-breach recall under UPI — honoured, citizen made whole</span>  <button class="btn mini" onclick="go(demoBreachRecall)">▶ run</button>
+<span class="c"># mandate-breach recall under UPI — allowed, payment reversed</span>  <button class="btn mini" onclick="go(demoBreachRecall)">▶ run</button>
 curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
 <span class="g">→ {"reversed":true,"reason":"mandate breach recalled"}</span>
 </pre>
@@ -699,9 +723,10 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
 <section id="downloads">
   <div class="wrap reveal">
     <div class="kicker">Downloads · hackathon deliverables</div>
-    <h2>Everything an agent — or a judge — needs</h2>
-    <p class="sub">Per the NANDA Town skills-track logic: a hosted service, tested endpoints, and a
-    SKILL.md an agent can succeed with unaided.</p>
+    <h2>Files: agent contract, deployment guide, API spec, summary documents</h2>
+    <p class="sub">The NANDA Town skills track requires a hosted service, tested endpoints, and a
+    SKILL.md an agent can succeed with unaided. All three are downloadable here, plus the
+    summary documents.</p>
     <div class="grid g3">
       <div class="card"><span class="tag t">Markdown</span><h3>SKILL.md</h3>
         <p>The agent contract: endpoints, copy-paste curl steps, a full worked example, error semantics.</p>
@@ -713,7 +738,7 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
         <p>The machine-readable contract — enough for any agent framework to generate a client.</p>
         <div class="btnrow"><a class="btn solid" href="/openapi.json" download="tvist-openapi.json">⤓ Download</a><a class="btn" href="/docs">Swagger UI</a></div></div>
       <div class="card"><span class="tag a">Pitch kit</span><h3>Executive brief (PDF)</h3>
-        <p>One airy page, essentials only — built for a 60-second read.</p>
+        <p>One page: problem, existing options, solution, architecture.</p>
         <div class="btnrow"><a class="btn solid" href="/download/brief-pdf">⤓ Download</a></div></div>
       <div class="card"><span class="tag a">Pitch kit</span><h3>Executive summary (PDF + DOCX)</h3>
         <p>The dense one-pager, and the full 5-page Word document with all 22 jurisdictions and the complete legal taxonomy.</p>
@@ -813,7 +838,7 @@ function logRes(status, data, good){
   con.innerHTML += `\n<span class="${good ? 'g' : 'r'}">← ${status} ${esc(JSON.stringify(data))}</span>\n`;
   con.scrollTop = con.scrollHeight;
 }
-function clearCon(){ con.innerHTML = '<span class="c"># cleared — fire away…</span>'; }
+function clearCon(){ con.innerHTML = '<span class="c"># cleared</span>'; }
 const uid = () => Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-4);
 
 async function call(m, p, body, expectFail){
@@ -1010,7 +1035,7 @@ async function demoEscrowLifecycle(){
 }
 async function demoBreachRecall(){
   const id = uid();
-  note('── RECALL · mandate breach under UPI → citizen made whole ──');
+  note('── RECALL · mandate breach under UPI → payment reversed ──');
   await call('POST','/pay',{ref:'u-'+id,from_account:'citizen-'+id,to_account:'rogue',
     amount:300,region:'in_upi'});
   await call('POST','/consent',{consent_id:'cb-'+id,principal:'citizen-'+id,budget:100});
@@ -1047,7 +1072,7 @@ async function demoHandshake(){
   await call('POST','/m2m/handshake',{pact_id:'hs-'+id, buyer_agent:'buyer-'+id,
     seller_agent:'seller-'+id, buyer_prefs:['eu_sepa','br_pix'],
     seller_prefs:['br_pix','in_upi'], amount:150});
-  note('seller delivers, escrow releases — trade done, zero humans:');
+  note('seller posts the delivery proof; escrow releases:');
   await call('POST',`/escrow/pact-hs-${id}/deliver`,{proof:'delivered'});
   await call('POST',`/escrow/pact-hs-${id}/release`);
 }
@@ -1055,7 +1080,7 @@ async function demoHandshake(){
 // ---- M2M: machine-to-machine agentic trade ---------------------------------------
 async function demoM2M(){
   const id = uid();
-  note('── M2M · agent↔agent trade, zero humans in the loop ──');
+  note('── M2M · agent-to-agent trade, no human involved ──');
   note('1) root mandate: the orchestrator agent\'s own spending policy');
   await call('POST','/consent',{consent_id:'root-'+id, principal:'orchestrator-'+id, budget:1000});
   note('2) attenuated delegation: 300 of the 1000 goes to a shopper bot');
@@ -1069,7 +1094,7 @@ async function demoM2M(){
   await call('POST',`/escrow/pact-p-${id}/deliver`,{proof:'delivered'});
   await call('POST',`/escrow/pact-p-${id}/release`);
   await call('GET',`/m2m/pact/p-${id}`);
-  note('✓ two machines traded safely — region agreed, mandate held, paid on proof');
+  note('✓ complete: region agreed, mandate enforced, paid after delivery proof');
 }
 async function atkM2M(){
   const id = uid();
@@ -1132,7 +1157,7 @@ async function atkX402(){
 // ---- persona + use-case demos ----------------------------------------------------
 async function demoPrincipal(){
   const id = uid();
-  note('── PERSONA · the principal: protected twice ──');
+  note('── PERSONA · the principal: refusal up front, recall after ──');
   await call('POST','/consent',{consent_id:'c-'+id,principal:'me-'+id,budget:500});
   note('1) the 900-credit overreach is refused up front…');
   await call('POST','/pay',{ref:'x-'+id,from_account:'me-'+id,to_account:'shop',

@@ -22,6 +22,6 @@ check "$NEW/taxonomy" 200
 check "$NEW/downloads" 200
 check "$NEW/download/brief-pdf" 200
 check "$NEW/x402/resource/market-report" 402
-(curl -s -H 'accept: text/html' --max-time 15 "$NEW/" || true) | grep -q "settlement-trust layer" \
+(curl -s -H 'accept: text/html' --max-time 15 "$NEW/" || true) | grep -q "payments made by AI agents" \
   && echo "ok  homepage" || { echo "BAD homepage"; fail=1; }
 [ $fail = 0 ] && echo "ALL GREEN — commit the URL swap, then submit SUBMISSION.md" || exit 1

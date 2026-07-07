@@ -1566,9 +1566,10 @@ def m2m_pact(pact_id: str) -> dict[str, Any]:
 # facilitator verifies and settles; the resource is delivered with an
 # X-PAYMENT-RESPONSE header. Sandbox: notional credits stand in for USDC on a
 # simulated Base network, and signatures are simulated ("sim-<nonce>").
-# The Tvist twist on the rail: optional consent enforcement (extra.consent_id),
-# nonce replay protection, and settlements recorded under the irrevocable
-# `stablecoin_x402` regime — escrow, not recall, is the protection here.
+# Additions on top of the base flow: optional consent enforcement
+# (extra.consent_id), nonce replay protection, and settlements recorded under
+# the irrevocable `stablecoin_x402` regime — escrow, not recall, is the
+# protection here.
 
 import base64
 import hashlib

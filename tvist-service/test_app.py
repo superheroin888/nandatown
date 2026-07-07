@@ -38,7 +38,7 @@ def test_root_serves_homepage_to_browsers(client: TestClient) -> None:
     r = client.get("/", headers={"accept": "text/html,application/xhtml+xml"})
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
-    assert "settlement-trust layer" in r.text  # the hero headline
+    assert "payments made by AI agents" in r.text  # the hero headline
     assert "SKILL.md" in r.text
 
 
@@ -319,7 +319,7 @@ def test_homepage_m2m_wired(client: TestClient) -> None:
     assert "demoM2M" in html and "atkM2M" in html  # live demos + attacks
     assert "/m2m/handshake" in html and "/m2m/delegate" in html
     # scenario surfaced as pain point 5 and use cases
-    assert "Machine-to-machine trust" in html      # pain card
+    assert "Machine-to-machine authority" in html  # pain card
     assert "Agent-swarm procurement" in html       # M2M use case
     assert "Pay-per-call agent APIs" in html       # x402 use case
 

@@ -14,12 +14,17 @@
 
 ## One-liner
 
-When an AI agent spends money on someone's behalf over instant, irrevocable
-rails, Tvist is the missing recourse layer: game-theoretically negotiated
-jurisdiction (22 real regimes), consent-capped payments, delivery-gated escrow,
-proof-gated recall, law-grounded disputes with inline citations, a native
-x402 pay rail, and machine-to-machine trade (attenuated delegation chains +
-one-call agent↔agent pacts) — all behind one no-auth, dual-use URL.
+An HTTP API for AI agents that send payments on someone's behalf. It provides,
+in order of use: jurisdiction agreement over 22 real payment regimes (Nash
+bargaining over both parties' rankings), consent enforcement (payments outside
+the stored mandate are refused with 403 before funds move), delivery-gated
+escrow (payee is paid only after the proof matches the agreed condition),
+rule-gated recall (only where the region allows it and the mandate was
+breached), disputes with the legal citation returned in the response, an x402
+pay-per-request rail (402 → signed X-PAYMENT → receipt, replay-refused), and
+machine-to-machine trade (budget-bounded delegation + one-call agent-to-agent
+trade setup). One base URL, no authentication; browsers get an HTML page,
+agents get JSON at the same URL.
 
 ## Live endpoint links
 
@@ -59,16 +64,18 @@ curl -s -X POST $BASE/dispute -H 'content-type: application/json' \
 
 ## Scoring-criteria mapping
 
-- **Useful** — the pre/post-transaction checks every spending agent needs:
-  jurisdiction, consent, escrow, recall, disputes; plus x402 as the native
-  agent pay flow.
-- **Creative** — Nash-bargaining jurisdiction selection over 22 real rails;
-  disputes grounded in civil/commercial law with official-source links and
-  inline citations; the consent cap enforced even on the irrevocable x402 rail.
-- **Easy to set up** — no auth, no keys; one curl to a working call; `GET /`
-  and `/openapi.json` self-describe everything.
-- **Agents succeed from SKILL.md alone** — the worked example in SKILL.md runs
-  verbatim (verified end-to-end); 49 endpoint tests green.
+- **Useful** — five checks a paying agent needs and cannot get from a plain
+  transfer call: jurisdiction agreement, consent enforcement, escrow, recall,
+  dispute validation; plus x402 pay-per-request.
+- **Creative** — jurisdiction chosen by Nash bargaining over 22 real payment
+  regimes; every dispute reason code mapped to civil/commercial law with links
+  to official sources and the citation returned in the response; the consent
+  budget checked even on the irrevocable x402 rail.
+- **Easy to set up** — no auth, no keys. The first working call is one curl.
+  `GET /` and `GET /openapi.json` describe every endpoint.
+- **Agents succeed from SKILL.md alone** — every curl block in SKILL.md runs
+  verbatim against the live URL; 57 tests pass (`pytest -q` in
+  `tvist-service/`).
 
 Disclaimer: technical demonstration — notional credits, not a bank; legal
 citations are not legal advice.
