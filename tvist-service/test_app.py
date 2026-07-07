@@ -443,6 +443,10 @@ def test_homepage_overview_and_map_wired(client: TestClient) -> None:
     # suggested-start chip: click in / click out, driven by GET /regions/suggest
     assert 'id="suggestbox"' in html and "toggleSuggest" in html
     assert "/regions/suggest?tz=" in html
+    # "Test the API" buttons run the live self-test, not just an anchor jump
+    assert "async function testApi()" in html
+    assert html.count('onclick="go(testApi)"') == 2  # nav CTA + hero button
+    assert 'onclick="testApi()"' in html             # playground button
 
 
 def test_homepage_has_playground_and_dual_use(client: TestClient) -> None:

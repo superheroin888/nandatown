@@ -156,7 +156,7 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
     <a class="item" href="#try">Try live</a>
     <a class="item" href="#downloads">Downloads</a>
   </div>
-  <a class="cta" href="#try">Test the API</a>
+  <a class="cta" href="#try" onclick="go(testApi)">Test the API</a>
   <button class="burger" id="burger" onclick="toggleMenu()" aria-label="Open menu" aria-expanded="false" aria-controls="menu">☰</button>
 </div></nav>
 
@@ -174,7 +174,7 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
       real request to the live service.
     </p>
     <div class="btnrow">
-      <a class="btn solid" href="#try">▶ Test the API live</a>
+      <a class="btn solid" href="#try" onclick="go(testApi)">▶ Test the API live</a>
       <a class="btn" href="/skill.md">⤓ SKILL.md — for agents</a>
       <a class="btn" href="/docs">Interactive docs</a>
       <a class="btn" href="/openapi.json">OpenAPI spec</a>
@@ -803,7 +803,8 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
         <h3>▶ Full escrowed booking (5 calls)</h3>
         <p>recommend → consent → escrow → deliver → release. The payee is paid only after
         the delivery proof lands.</p>
-        <div class="btnrow"><button class="btn solid" onclick="runFlow()">Run the flow</button>
+        <div class="btnrow"><button class="btn solid" onclick="testApi()">✓ Run the API self-test (10 checks)</button>
+        <button class="btn" onclick="runFlow()">Run the flow</button>
         <button class="btn" onclick="demoX402()">⚡ x402: 402 → pay → 200</button>
         <button class="btn" onclick="demoM2M()">🤖⇄🤖 M2M trade</button></div>
       </div>
@@ -1120,6 +1121,41 @@ async function stepDeliver(){
     amount:300,region:'br_pix',condition_expected:'delivered'});
   await call('POST',`/escrow/e-${id}/deliver`,{proof:'delivered'});
   await call('GET',`/escrow/e-${id}`);
+}
+
+// ---- one-click API self-test (nav + hero "Test the API" buttons) ---------------
+async function testApi(){
+  const id = uid();
+  let pass = 0, total = 0;
+  const check = (ok, what) => { total++; if (ok) pass++;
+    note(`${ok ? '✓' : '✗'} ${what}`); return ok; };
+  note(`── API SELF-TEST · run ${id} — each step states its expected result ──`);
+  let r = await call('GET', '/health');
+  check(r.status === 200 && r.data.status === 'ok', 'health: expected 200 {"status":"ok"}');
+  r = await call('POST', '/regions/recommend',
+    {client_prefs:['eu_sepa','br_pix'], agent_prefs:['br_pix','in_upi']});
+  check(r.status === 200 && r.data.agreed_region === 'br_pix',
+    'recommend: expected agreed_region "br_pix" (the only shared region)');
+  r = await call('POST', '/consent', {consent_id:'t-'+id, principal:'tester-'+id, budget:500});
+  check(r.status === 200, 'consent: expected 200 (mandate stored)');
+  r = await call('POST', '/pay', {ref:'ok-'+id, from_account:'tester-'+id, to_account:'shop',
+    amount:300, region:'br_pix', consent_id:'t-'+id});
+  check(r.status === 200 && r.data.settled === true, 'pay 300 within 500: expected 200 settled');
+  r = await call('POST', '/pay', {ref:'no-'+id, from_account:'tester-'+id, to_account:'shop',
+    amount:900, region:'br_pix', consent_id:'t-'+id}, true);
+  check(r.status === 403, 'pay 900 over 500: expected 403 refusal, funds unmoved');
+  r = await call('POST', '/escrow', {escrow_id:'t-'+id, payer:'tester-'+id, payee:'seller',
+    amount:100, region:'br_pix', condition_expected:'done'});
+  check(r.status === 200, 'escrow open: expected 200 (funds held)');
+  r = await call('POST', `/escrow/t-${id}/release`, null, true);
+  check(r.status === 403, 'release before delivery: expected 403');
+  r = await call('POST', `/escrow/t-${id}/deliver`, {proof:'done'});
+  check(r.status === 200, 'deliver matching proof: expected 200');
+  r = await call('POST', `/escrow/t-${id}/release`);
+  check(r.status === 200, 'release after delivery: expected 200 (payee paid)');
+  r = await call('GET', '/stats');
+  check(r.status === 200, 'stats: expected 200 (live state readable)');
+  note(`── SELF-TEST RESULT: ${pass}/${total} checks passed ──`);
 }
 
 // ---- full happy flow ----------------------------------------------------------
