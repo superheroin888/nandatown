@@ -979,6 +979,7 @@ def _index() -> dict[str, Any]:
             "GET /view/skill": "SKILL.md rendered as HTML for humans",
             "GET /view/readme": "README rendered as HTML for humans",
             "GET /regions": "list all jurisdictions and their dispute regimes",
+            "GET /regions/suggest": "suggested starting jurisdiction from ?tz= and Accept-Language (IP echoed, not geolocated)",
             "POST /regions/recommend": "Nash-optimal region for two parties {client_prefs, agent_prefs}",
             "GET /taxonomy": "civil/commercial-law dispute taxonomy + reason-code linkage",
             "GET /regions/{region}/legal": "a jurisdiction's legal system, regulator, official instruments",
@@ -1059,6 +1060,88 @@ def list_regions() -> dict[str, Any]:
             }
             for key, r in REGIONS.items()
         },
+    }
+
+
+# Deterministic signal -> region maps for GET /regions/suggest. Exact IANA
+# timezone first, then timezone prefix, then the Accept-Language region subtag.
+_TZ_REGION: dict[str, str] = {
+    "Europe/Stockholm": "nordic", "Europe/Oslo": "nordic", "Europe/Copenhagen": "nordic",
+    "Europe/Helsinki": "nordic", "Europe/Reykjavik": "nordic",
+    "Europe/London": "uk_fps", "Europe/Zurich": "ch_twint",
+    "America/Sao_Paulo": "br_pix", "America/Manaus": "br_pix", "America/Recife": "br_pix",
+    "America/Fortaleza": "br_pix", "America/Belem": "br_pix", "America/Bahia": "br_pix",
+    "America/Mexico_City": "mx_spei", "America/Monterrey": "mx_spei", "America/Tijuana": "mx_spei",
+    "America/Toronto": "ca_interac", "America/Vancouver": "ca_interac",
+    "America/Edmonton": "ca_interac", "America/Winnipeg": "ca_interac",
+    "America/Halifax": "ca_interac", "America/St_Johns": "ca_interac",
+    "Asia/Kolkata": "in_upi", "Asia/Singapore": "sg_fast", "Asia/Tokyo": "jp_zengin",
+    "Asia/Hong_Kong": "hk_fps", "Asia/Dubai": "ae_aani", "Asia/Riyadh": "sa_sarie",
+    "Asia/Shanghai": "cn_ibps", "Asia/Urumqi": "cn_ibps",
+    "Africa/Johannesburg": "za_payshap", "Africa/Lagos": "ng_nip", "Africa/Nairobi": "ke_mpesa",
+}
+_TZ_PREFIX_REGION: list[tuple[str, str]] = [
+    ("Europe/", "eu_sepa"), ("America/", "us_fednow"), ("Australia/", "au_npp"),
+]
+_CC_REGION: dict[str, str] = {
+    "SE": "nordic", "NO": "nordic", "DK": "nordic", "FI": "nordic", "IS": "nordic",
+    "GB": "uk_fps", "CH": "ch_twint", "BR": "br_pix", "MX": "mx_spei",
+    "US": "us_fednow", "CA": "ca_interac", "IN": "in_upi", "SG": "sg_fast",
+    "AU": "au_npp", "JP": "jp_zengin", "HK": "hk_fps", "AE": "ae_aani",
+    "SA": "sa_sarie", "ZA": "za_payshap", "NG": "ng_nip", "KE": "ke_mpesa",
+    "CN": "cn_ibps",
+    "DE": "eu_sepa", "FR": "eu_sepa", "ES": "eu_sepa", "IT": "eu_sepa", "NL": "eu_sepa",
+    "BE": "eu_sepa", "AT": "eu_sepa", "PT": "eu_sepa", "IE": "eu_sepa", "PL": "eu_sepa",
+    "GR": "eu_sepa", "CZ": "eu_sepa", "SK": "eu_sepa", "SI": "eu_sepa", "HR": "eu_sepa",
+    "RO": "eu_sepa", "BG": "eu_sepa", "HU": "eu_sepa", "LT": "eu_sepa", "LV": "eu_sepa",
+    "EE": "eu_sepa", "LU": "eu_sepa", "MT": "eu_sepa", "CY": "eu_sepa",
+}
+
+
+@app.get("/regions/suggest")
+def suggest_region(request: Request, tz: str = "") -> dict[str, Any]:
+    """Suggest a starting jurisdiction for this caller.
+
+    Deterministic and self-contained. Signals, in order of precedence:
+    the caller's IANA timezone (``?tz=`` query parameter — browsers know it via
+    ``Intl.DateTimeFormat().resolvedOptions().timeZone``), then the region
+    subtag of the ``Accept-Language`` header. The caller's IP is echoed for
+    transparency but is NOT geolocated: this sandbox calls no external
+    geolocation service. If no signal maps, the suggestion is ``global``.
+    The suggestion is an option, not a decision — parties still negotiate via
+    ``POST /regions/recommend``.
+    """
+    fwd = request.headers.get("x-forwarded-for", "")
+    client_ip = fwd.split(",")[0].strip() if fwd else (
+        request.client.host if request.client else "")
+    accept_language = request.headers.get("accept-language", "")
+    region: str | None = None
+    method = "default"
+    if tz:
+        region = _TZ_REGION.get(tz)
+        if region is None:
+            region = next((r for p, r in _TZ_PREFIX_REGION if tz.startswith(p)), None)
+        if region is not None:
+            method = f"timezone {tz!r}"
+    if region is None and accept_language:
+        first = accept_language.split(",")[0].strip()
+        parts = first.split(";")[0].split("-")
+        cc = parts[1].upper() if len(parts) > 1 else ""
+        region = _CC_REGION.get(cc)
+        if region is not None:
+            method = f"Accept-Language region {cc!r}"
+    if region is None:
+        region = "global"
+    return {
+        "suggested_region": region,
+        "label": REGIONS[region].label,
+        "method": method,
+        "client_ip": client_ip,
+        "signals": {"timezone": tz or None, "accept_language": accept_language or None},
+        "note": ("client_ip is echoed for transparency only — no external "
+                 "geolocation service is called; the suggestion derives from "
+                 "the timezone and Accept-Language signals above"),
+        "next_step": "POST /regions/recommend with both parties' ranked preferences",
     }
 
 

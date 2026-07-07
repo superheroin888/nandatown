@@ -79,6 +79,7 @@ failed>"}` with a 4xx status code.
 | Method & path | Body | Does |
 |---|---|---|
 | `GET /regions` | — | List all 22 jurisdictions. Each entry states: `irrevocable`, `recall_allowed`, `recall_window_ticks`, `rail`, and the valid `reason_codes` |
+| `GET /regions/suggest?tz=<IANA tz>` | — | Suggested starting jurisdiction for the caller, from the `tz` query parameter and the `Accept-Language` header. The caller's IP is echoed for transparency but not geolocated. A convenience default, not a decision — negotiate with `POST /regions/recommend` |
 | `POST /regions/recommend` | `{client_prefs:[...], agent_prefs:[...]}` | Return the Nash-optimal region for both rankings, or `agreed_region: null` if no region appears in both lists |
 | `GET /taxonomy` | — | The dispute taxonomy: 7 legal categories, the mapping from every reason code to its category, and per-region linkage |
 | `GET /regions/{region}/legal` | — | One jurisdiction's legal system, regulator, and legal instruments (statutes and scheme rulebooks, each with a link to the official source), plus the legal basis for each of its reason codes |

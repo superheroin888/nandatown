@@ -202,7 +202,7 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 
     <div class="metrics" title="hydrated live from GET /stats and GET /openapi.json">
       <div class="metric"><div class="n" id="m-regions" data-count="22">0</div><div class="l">jurisdictions · live from <code>/stats</code></div></div>
-      <div class="metric"><div class="n" id="m-endpoints" data-count="32">0</div><div class="l">endpoints · live from <code>/openapi.json</code></div></div>
+      <div class="metric"><div class="n" id="m-endpoints" data-count="33">0</div><div class="l">endpoints · live from <code>/openapi.json</code></div></div>
       <div class="metric"><div class="n" data-count="4">0</div><div class="l">protection gates</div></div>
       <div class="metric"><div class="n" id="m-accounts" data-count="0">0</div><div class="l">accounts · live from <code>/stats</code></div></div>
       <div class="metric"><div class="n" id="m-settlements" data-count="0">0</div><div class="l">settlements · live from <code>/stats</code></div></div>
@@ -239,8 +239,8 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
         22 real regimes, consent enforced before settlement, escrow released only on delivery
         proof, and recall only where the regime allows it and the mandate was breached — plus
         law-cited disputes, an x402 pay-per-request rail, and machine-to-machine delegation.
-        Implemented in this sandbox: 32 endpoints, 22 jurisdictions, 7 legal categories,
-        57 passing tests.</p></div>
+        Implemented in this sandbox: 33 endpoints, 22 jurisdictions, 7 legal categories,
+        and a passing test suite (<code>pytest -q</code>).</p></div>
     </div>
     <div class="btnrow">
       <a class="btn" href="/download/brief-pdf">⤓ Executive brief — 1-page PDF</a>
@@ -530,7 +530,10 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
     <p class="sub">Drag the globe to rotate it. Click a marker to select that jurisdiction: its
     dispute regime and key legal clauses load live from
     <code>GET /regions/{region}/legal</code>. Click a clause to highlight it. The two
-    non-geographic regimes are the chips under the globe.</p>
+    non-geographic regimes are the chips under the globe. The <b>suggested start</b> chip comes
+    from <code>GET /regions/suggest</code> — derived from your browser timezone and locale; your
+    IP is echoed for transparency but not geolocated. Click it to select, click again to
+    clear.</p>
 
     <div class="grid g2" style="margin-top:26px">
       <div class="card">
@@ -538,6 +541,7 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
         <h3>🌍 22 jurisdictions</h3>
         <svg id="globe" viewBox="0 0 420 420" width="100%" role="img"
              aria-label="Rotatable globe with one marker per jurisdiction. Click a marker to load that region's legal data."></svg>
+        <div id="suggestbox" style="margin-top:10px;font-size:12.5px;color:var(--mut)">loading /regions/suggest…</div>
         <div class="btnrow" style="margin-top:8px">
           <button class="btn mini gchip" data-k="global" onclick="selectRegion('global')">🌐 global — non-geographic default</button>
           <button class="btn mini gchip" data-k="stablecoin_x402" onclick="selectRegion('stablecoin_x402')">⛓️ stablecoin_x402 — on-chain</button>
@@ -748,7 +752,7 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
 <section id="api">
   <div class="wrap reveal">
     <div class="kicker">API</div>
-    <h2>32 endpoints. Every snippet below is runnable — ▶ run sends it from this page.</h2>
+    <h2>33 endpoints. Every snippet below is runnable — ▶ run sends it from this page.</h2>
 <pre>
 <span class="c"># Nash-optimal jurisdiction for two parties with different rankings</span>  <button class="btn mini" onclick="go(stepRecommend)">▶ run</button>
 curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
@@ -1473,14 +1477,52 @@ function drawGlobe(){
     if (wasClick && t) selectRegion(t.dataset.k);
   });
   drawGlobe();
-  selectRegion('in_upi');   // default selection so the panel is never empty
+  suggestStart();   // GET /regions/suggest picks the initial selection
 })();
 
-async function selectRegion(k){
+// ---- suggested starting jurisdiction (GET /regions/suggest) ---------------------
+async function suggestStart(){
+  const box = document.getElementById('suggestbox');
+  let start = 'in_upi';   // fallback if the suggest call fails
+  try{
+    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || '';
+    const d = await (await fetch('/regions/suggest?tz=' + encodeURIComponent(tz))).json();
+    window._suggest = d.suggested_region;
+    start = d.suggested_region;
+    box.innerHTML =
+      `<button class="btn mini gchip" id="suggestbtn" data-k="${esc(d.suggested_region)}" ` +
+      `onclick="toggleSuggest()">📍 suggested start: ${esc(d.suggested_region)}</button> ` +
+      `<span>from ${esc(d.method)} · your IP: ${esc(d.client_ip)} (echoed, not geolocated) · ` +
+      `click to select, click again to clear</span>`;
+  }catch(e){ box.textContent = ''; }
+  if (GEO[start]){   // rotate the globe so the starting marker faces front
+    G.rot.l = -GEO[start][1];
+    G.rot.p = Math.max(-80, Math.min(80, -GEO[start][0]));
+  }
+  selectRegion(start, false);
+}
+function toggleSuggest(){
+  const k = window._suggest; if (!k) return;
+  if (G.sel === k){   // click out: clear the selection
+    G.sel = null; drawGlobe();
+    document.querySelectorAll('.gchip').forEach(b => b.classList.remove('on'));
+    document.getElementById('maptitle').textContent = 'No jurisdiction selected';
+    const out = document.getElementById('mapout');
+    out.className = 'result'; out.textContent = 'click a marker on the globe, or a chip…';
+    document.getElementById('clauses').innerHTML = '';
+  } else selectRegion(k);
+}
+
+async function selectRegion(k, scroll = true){
   G.sel = k; drawGlobe();
   document.querySelectorAll('.gchip').forEach(b => b.classList.toggle('on', b.dataset.k === k));
   const title = document.getElementById('maptitle'), out = document.getElementById('mapout'),
         cl = document.getElementById('clauses');
+  if (scroll){   // if the details panel is off-screen (stacked layout), bring it into view
+    const r = title.closest('.card').getBoundingClientRect();
+    if (r.top > innerHeight * 0.75 || r.bottom < 90)
+      title.closest('.card').scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
   out.className='result'; out.textContent = `loading /regions/${k}/legal…`; cl.innerHTML='';
   try{
     const d = await (await fetch(`/regions/${k}/legal`)).json();

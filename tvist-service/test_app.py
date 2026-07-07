@@ -388,6 +388,43 @@ def test_cors_open_for_browser_agents(client: TestClient) -> None:
     assert r.headers.get("access-control-allow-origin") == "*"
 
 
+def test_regions_suggest(client: TestClient) -> None:
+    # timezone signal wins
+    r = client.get("/regions/suggest?tz=Europe/Stockholm").json()
+    assert r["suggested_region"] == "nordic" and "timezone" in r["method"]
+    # unmapped European timezone falls back to the prefix rule
+    assert client.get("/regions/suggest?tz=Europe/Madrid").json()["suggested_region"] == "eu_sepa"
+    # no timezone -> Accept-Language region subtag
+    r = client.get("/regions/suggest", headers={"accept-language": "pt-BR,pt;q=0.9"}).json()
+    assert r["suggested_region"] == "br_pix" and "Accept-Language" in r["method"]
+    # no usable signal -> global
+    r = client.get("/regions/suggest", headers={"accept-language": ""}).json()
+    assert r["suggested_region"] == "global" and r["method"] == "default"
+    # every response: valid region, ip echoed, no-geolocation note
+    valid = set(client.get("/regions").json()["regions"])
+    for q in ("?tz=Asia/Kolkata", "?tz=Australia/Sydney", ""):
+        d = client.get(f"/regions/suggest{q}").json()
+        assert d["suggested_region"] in valid
+        assert "client_ip" in d and "no external geolocation" in d["note"]
+
+
+def test_globe_markers_match_region_registry(client: TestClient) -> None:
+    """Every marker on the globe must be a real region key, and every
+    geographic region must have a marker — a marker click can therefore only
+    load its own region's legal data (the panel fetches /regions/{key}/legal
+    with the same key)."""
+    import re
+
+    html = client.get("/", headers={"accept": "text/html"}).text
+    geo_block = re.search(r"const GEO = \{(.*?)\};", html, re.S).group(1)
+    marker_keys = set(re.findall(r"(\w+):\[", geo_block))
+    region_keys = set(client.get("/regions").json()["regions"])
+    assert marker_keys <= region_keys
+    assert region_keys - marker_keys == {"global", "stablecoin_x402"}  # chips, not markers
+    # the panel fetch uses the same key the marker carries
+    assert "/regions/${k}/legal" in html
+
+
 def test_homepage_overview_and_map_wired(client: TestClient) -> None:
     html = client.get("/", headers={"accept": "text/html"}).text
     # executive-summary teaser: sourced figures + downloads
@@ -403,6 +440,9 @@ def test_homepage_overview_and_map_wired(client: TestClient) -> None:
     assert "runNash" in html and "NASH_MODES" in html
     for mode in ("'1-1'", "'1-n'", "'n-n'"):
         assert mode in html
+    # suggested-start chip: click in / click out, driven by GET /regions/suggest
+    assert 'id="suggestbox"' in html and "toggleSuggest" in html
+    assert "/regions/suggest?tz=" in html
 
 
 def test_homepage_has_playground_and_dual_use(client: TestClient) -> None:
