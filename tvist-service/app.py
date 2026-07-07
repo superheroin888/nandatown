@@ -1729,10 +1729,16 @@ class X402FacilitatorIn(BaseModel):
     payment_header: str
 
 
+def _x402_resource_name(resource: str) -> str:
+    """Accept both the bare name and the full path the 402 challenge advertises
+    in its ``resource`` field (``/x402/resource/<name>``)."""
+    return resource.removeprefix("/x402/resource/")
+
+
 @app.post("/x402/verify")
 def x402_facilitator_verify(body: X402FacilitatorIn) -> dict[str, Any]:
     """Facilitator-style verification: is this X-PAYMENT valid for the resource?"""
-    payment, reason = _x402_verify(body.resource, body.payment_header)
+    payment, reason = _x402_verify(_x402_resource_name(body.resource), body.payment_header)
     payer = ""
     if payment is not None:
         payer = str(payment["payload"]["authorization"].get("from", ""))
@@ -1742,10 +1748,11 @@ def x402_facilitator_verify(body: X402FacilitatorIn) -> dict[str, Any]:
 @app.post("/x402/settle")
 def x402_facilitator_settle(body: X402FacilitatorIn) -> dict[str, Any]:
     """Facilitator-style settlement: verify then execute the payment on-ledger."""
-    payment, reason = _x402_verify(body.resource, body.payment_header)
+    name = _x402_resource_name(body.resource)
+    payment, reason = _x402_verify(name, body.payment_header)
     if payment is None:
         raise HTTPException(402, reason or "invalid payment")
-    return _x402_settle(body.resource, payment)
+    return _x402_settle(name, payment)
 
 
 @app.get("/accounts/{name}")

@@ -118,6 +118,23 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
 .flow .spark.red{fill:var(--red)}
 .flow .glabel{fill:var(--teal);font-size:10.5px;font-weight:700;letter-spacing:.08em}
 @media (prefers-reduced-motion: reduce){.flow .arrow{animation:none}.dot{animation:none}}
+/* jurisdiction globe + clauses + nash visualizer */
+#globe{touch-action:none;cursor:grab;display:block;max-width:420px;margin:0 auto}
+#globe:active{cursor:grabbing}
+.gsphere{fill:#0a0f22;stroke:var(--line);stroke-width:1.2}
+.gline{stroke:var(--line);fill:none;stroke-width:.7;opacity:.7}
+.gmark{fill:var(--teal);stroke:#04241f;stroke-width:1;cursor:pointer}
+.gmark:hover{fill:var(--indigo)}
+.gmark.sel{fill:var(--amber)}
+.gmark.nash{fill:var(--coral)}
+.glab{fill:var(--mut);font-size:8.5px;pointer-events:none}
+.gchip.on{border-color:var(--amber);color:var(--amber)}
+.clause{border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-top:8px;cursor:pointer;font-size:13px;transition:.15s}
+.clause:hover{border-color:var(--teal)}
+.clause.hl{background:rgba(251,191,36,.13);border-color:var(--amber)}
+.clause .basis{color:var(--mut);font-size:12px;margin-top:2px}
+.clause.hl .basis{color:var(--txt)}
+.modebtn.on{border-color:var(--teal);color:var(--teal)}
 </style>
 </head>
 <body>
@@ -126,9 +143,11 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
 <nav><div class="wrap">
   <a class="logo" href="#top" title="Back to top">tvist<b>.ai</b></a>
   <div class="menu" id="menu">
+    <a class="item" href="#overview">Overview</a>
     <a class="item" href="#pain">Pain points</a>
     <a class="item" href="#spectrum">Spectrum</a>
     <a class="item" href="#arch">Architecture</a>
+    <a class="item" href="#map">Map</a>
     <a class="item" href="#components">Components</a>
     <a class="item" href="#law">Legal</a>
     <a class="item" href="#personas">Personas</a>
@@ -188,6 +207,52 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
       <div class="metric"><div class="n" id="m-accounts" data-count="0">0</div><div class="l">accounts · live from <code>/stats</code></div></div>
       <div class="metric"><div class="n" id="m-settlements" data-count="0">0</div><div class="l">settlements · live from <code>/stats</code></div></div>
     </div>
+  </div>
+</section>
+
+<!-- OVERVIEW — EXECUTIVE SUMMARY TEASER -->
+<section id="overview">
+  <div class="wrap reveal">
+    <div class="kicker">Executive summary — the one-minute version</div>
+    <h2>Problem, market scope, solution</h2>
+    <div class="grid g3" style="margin-top:20px">
+      <div class="card"><span class="tag c">1 · The problem</span>
+        <h3>Agents pay on rails that cannot be reversed</h3>
+        <p>AI agents now spend money on people's behalf: about 1 in 6 Black Friday 2025 purchases
+        were AI-assisted, and generative-AI retail traffic grew 4,700% year over year (Adobe
+        Analytics). Juniper Research (2026) names trust the #1 adoption barrier for agentic
+        commerce. The rails agents pay on — Pix, SEPA Instant, FedNow, UPI — settle in seconds
+        and are final; the ECB puts fraud risk on instant payments at "up to 10× higher".
+        Disputes were already expensive on cards: 106M disputes at Visa in 2025, 40–80% of
+        e-commerce disputes classed as friendly fraud, and roughly $28B/yr in merchant chargeback
+        losses (industry figures, compiled with sources in the executive summary below).</p></div>
+      <div class="card"><span class="tag a">2 · The market scope</span>
+        <h3>Existing products each cover one part</h3>
+        <p>Visa, Mastercard, and Amex dispute products work on card rails only. Agent-payment
+        protocols (Google AP2, OpenAI ACP, OKX APP, Coinbase x402) execute checkout but ship no
+        dispute layer. Chargeback SaaS automates card representment only. Custody providers hold
+        funds but offer no programmable, delivery-gated escrow. No product covers disputes and
+        escrow across instant account-to-account rails — that gap is Tvist's scope.</p></div>
+      <div class="card"><span class="tag t">3 · The solution</span>
+        <h3>Four checks around every agent payment</h3>
+        <p>Tvist runs four checks in a fixed order: jurisdiction agreed by Nash bargaining over
+        22 real regimes, consent enforced before settlement, escrow released only on delivery
+        proof, and recall only where the regime allows it and the mandate was breached — plus
+        law-cited disputes, an x402 pay-per-request rail, and machine-to-machine delegation.
+        Implemented in this sandbox: 32 endpoints, 22 jurisdictions, 7 legal categories,
+        57 passing tests.</p></div>
+    </div>
+    <div class="btnrow">
+      <a class="btn" href="/download/brief-pdf">⤓ Executive brief — 1-page PDF</a>
+      <a class="btn" href="/download/summary-pdf">⤓ Executive summary — PDF</a>
+      <a class="btn" href="/download/summary-docx">⤓ Full summary — DOCX</a>
+      <a class="btn solid" href="#map">Jurisdiction map ↓</a>
+    </div>
+    <p class="sub" style="margin-top:14px;font-size:12.5px">Market figures above come from the
+    named public sources; the full source list is in the executive summary documents. Service
+    figures (endpoints, jurisdictions, legal categories, tests) are measurable here:
+    <a href="/openapi.json">GET /openapi.json</a>, <a href="/regions">GET /regions</a>,
+    <a href="/taxonomy">GET /taxonomy</a>, <code>pytest -q</code> in <code>tvist-service/</code>.</p>
   </div>
 </section>
 
@@ -453,6 +518,59 @@ curl -s <span class="g">this URL</span>/skill.md  <span class="c"># the full age
       <div class="card"><span class="tag t">Layer 3</span><h3>Value engine</h3>
         <p>Ledger + escrow + recall. Conservation-checked: balances plus holds are invariant across
         every pay / hold / release / recall sequence — watch <code>total_funds</code> in the live stats.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- JURISDICTION GLOBE + NASH VISUALIZER -->
+<section id="map">
+  <div class="wrap reveal">
+    <div class="kicker">Jurisdiction map · live from GET /regions/{region}/legal</div>
+    <h2>Pick a jurisdiction on the globe — its clauses load from the API</h2>
+    <p class="sub">Drag the globe to rotate it. Click a marker to select that jurisdiction: its
+    dispute regime and key legal clauses load live from
+    <code>GET /regions/{region}/legal</code>. Click a clause to highlight it. The two
+    non-geographic regimes are the chips under the globe.</p>
+
+    <div class="grid g2" style="margin-top:26px">
+      <div class="card">
+        <span class="tag t">Interactive · drag to rotate, click to select</span>
+        <h3>🌍 22 jurisdictions</h3>
+        <svg id="globe" viewBox="0 0 420 420" width="100%" role="img"
+             aria-label="Rotatable globe with one marker per jurisdiction. Click a marker to load that region's legal data."></svg>
+        <div class="btnrow" style="margin-top:8px">
+          <button class="btn mini gchip" data-k="global" onclick="selectRegion('global')">🌐 global — non-geographic default</button>
+          <button class="btn mini gchip" data-k="stablecoin_x402" onclick="selectRegion('stablecoin_x402')">⛓️ stablecoin_x402 — on-chain</button>
+        </div>
+        <p style="color:var(--mut);font-size:12px;margin-top:8px">Teal marker = jurisdiction ·
+        amber = selected · red = agreed in the Nash run below.</p>
+      </div>
+      <div class="card">
+        <span class="tag i">Selected jurisdiction · GET /regions/{region}/legal</span>
+        <h3 id="maptitle">No jurisdiction selected</h3>
+        <div class="result" id="mapout">click a marker on the globe, or a chip…</div>
+        <div id="clauses"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:22px">
+      <span class="tag t">Live · one POST /regions/recommend per pair</span>
+      <h3>⚖️ Nash cooperation — 1–1, 1–n, n–n</h3>
+      <p>Each mode draws buyer agents (left) and counterparties (right) and sends one real
+      <code>POST /regions/recommend</code> call per pair, with the ranked preference lists shown
+      in each box. A teal edge is labeled with the agreed region — the Nash bargaining solution
+      over both rankings. A red dashed edge means the pair shares no region and must not
+      transact. Agreed regions turn red on the globe above.</p>
+      <div class="btnrow">
+        <button class="btn mini modebtn" data-m="1-1" onclick="runNash('1-1')">1–1 · one client, one agent</button>
+        <button class="btn mini modebtn" data-m="1-n" onclick="runNash('1-n')">1–n · one buyer, three sellers</button>
+        <button class="btn mini modebtn" data-m="n-n" onclick="runNash('n-n')">n–n · three buyers, three sellers</button>
+      </div>
+      <div class="flowbox" style="margin-top:14px">
+        <svg id="nashsvg" width="100%" role="img"
+             aria-label="Nash pairing diagram: buyer agents left, counterparties right, each edge labeled with the agreed region or marked as no deal."></svg>
+      </div>
+      <div class="result" id="nashnote"></div>
     </div>
   </div>
 </section>
@@ -754,9 +872,11 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
   <div class="fcols">
     <div>
       <h3>Explore</h3>
+      <a class="f" href="#overview">Executive overview</a>
       <a class="f" href="#pain">Pain points</a>
       <a class="f" href="#spectrum">Trust spectrum</a>
       <a class="f" href="#arch">Architecture &amp; flow</a>
+      <a class="f" href="#map">Jurisdiction map &amp; Nash</a>
       <a class="f" href="#components">Key components</a>
       <a class="f" href="#law">Legal taxonomy</a>
       <a class="f" href="#personas">Personas</a>
@@ -1283,6 +1403,166 @@ async function callSilent(m, p, body){
     return {status: r.status, data: await r.json()}; }
   catch(e){ return {status:0, data:null}; }
 }
+
+// ---- jurisdiction globe (orthographic projection, pure SVG) --------------------
+const GEO = {   // region key -> [lat, lon] of the regulator's seat
+  eu_sepa:[50.8,4.4], uk_fps:[51.5,-0.1], nordic:[59.3,18.1], ch_twint:[46.9,7.4],
+  br_pix:[-15.8,-47.9], mx_spei:[19.4,-99.1], us_fednow:[38.9,-77.0], us_rtp:[40.7,-74.0],
+  ca_interac:[45.4,-75.7], in_upi:[28.6,77.2], sg_fast:[1.35,103.8], au_npp:[-33.9,151.2],
+  jp_zengin:[35.7,139.7], hk_fps:[22.3,114.2], ae_aani:[24.5,54.4], sa_sarie:[24.7,46.7],
+  za_payshap:[-26.2,28.0], ng_nip:[6.5,3.4], ke_mpesa:[-1.3,36.8], cn_ibps:[39.9,116.4],
+};
+const LOFF = {  // label offsets so close markers stay readable
+  us_rtp:[8,7], us_fednow:[8,17], ca_interac:[8,-6], uk_fps:[-46,-6], eu_sepa:[8,-2],
+  ch_twint:[8,12], nordic:[8,-2], sa_sarie:[-56,12], ae_aani:[8,-2], hk_fps:[8,-4],
+  cn_ibps:[8,-2], jp_zengin:[8,12],
+};
+const G = {rot:{l:-10, p:-18}, R:192, C:210, sel:null, nash:new Set()};
+const D2R = Math.PI/180;
+function gproj(lat, lon){
+  const f=lat*D2R, l=lon*D2R, f0=-G.rot.p*D2R, l0=-G.rot.l*D2R;
+  const cosc = Math.sin(f0)*Math.sin(f) + Math.cos(f0)*Math.cos(f)*Math.cos(l-l0);
+  return {x: G.C + G.R*Math.cos(f)*Math.sin(l-l0),
+          y: G.C - G.R*(Math.cos(f0)*Math.sin(f) - Math.sin(f0)*Math.cos(f)*Math.cos(l-l0)),
+          v: cosc > 0};
+}
+function gpath(pts){
+  let d='', pen=false;
+  for (const p of pts){
+    if (p.v){ d += (pen?'L':'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1); pen=true; }
+    else pen=false;
+  }
+  return d;
+}
+function drawGlobe(){
+  const svg = document.getElementById('globe'); if (!svg) return;
+  let h = `<circle class="gsphere" cx="${G.C}" cy="${G.C}" r="${G.R}"/>`;
+  for (let lon=-180; lon<180; lon+=30){
+    const pts=[]; for (let lat=-88; lat<=88; lat+=4) pts.push(gproj(lat,lon));
+    h += `<path class="gline" d="${gpath(pts)}"/>`;
+  }
+  for (let lat=-60; lat<=60; lat+=30){
+    const pts=[]; for (let lon=-180; lon<=180; lon+=4) pts.push(gproj(lat,lon));
+    h += `<path class="gline" d="${gpath(pts)}"/>`;
+  }
+  for (const [k, [lat,lon]] of Object.entries(GEO)){
+    const p = gproj(lat,lon); if (!p.v) continue;
+    const cls = 'gmark' + (G.sel===k?' sel':'') + (G.nash.has(k)?' nash':'');
+    const [ox, oy] = LOFF[k] || [8, 3];
+    h += `<circle class="${cls}" data-k="${k}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${G.sel===k?8:5.5}"><title>${k}</title></circle>`
+       + `<text class="glab" x="${(p.x+ox).toFixed(1)}" y="${(p.y+oy).toFixed(1)}">${k}</text>`;
+  }
+  svg.innerHTML = h;
+}
+(function initGlobe(){
+  const svg = document.getElementById('globe'); if (!svg) return;
+  let drag = null;
+  svg.addEventListener('pointerdown', e => {
+    drag = {x:e.clientX, y:e.clientY, moved:0}; svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+    drag.x=e.clientX; drag.y=e.clientY; drag.moved += Math.abs(dx)+Math.abs(dy);
+    G.rot.l += dx*0.5; G.rot.p = Math.max(-80, Math.min(80, G.rot.p + dy*0.5));
+    drawGlobe();
+  });
+  svg.addEventListener('pointerup', e => {
+    const wasClick = drag && drag.moved < 6; drag = null;
+    const t = e.target.closest && e.target.closest('[data-k]');
+    if (wasClick && t) selectRegion(t.dataset.k);
+  });
+  drawGlobe();
+  selectRegion('in_upi');   // default selection so the panel is never empty
+})();
+
+async function selectRegion(k){
+  G.sel = k; drawGlobe();
+  document.querySelectorAll('.gchip').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+  const title = document.getElementById('maptitle'), out = document.getElementById('mapout'),
+        cl = document.getElementById('clauses');
+  out.className='result'; out.textContent = `loading /regions/${k}/legal…`; cl.innerHTML='';
+  try{
+    const d = await (await fetch(`/regions/${k}/legal`)).json();
+    title.textContent = d.label;
+    out.innerHTML =
+      `legal system: <b style="color:var(--teal)">${esc(d.legal_system)}</b>` +
+      ` · regulator: ${esc(d.regulator)}<br>` +
+      `recall: <span class="${d.recall_allowed?'ok':'no'}">${d.recall_allowed?'allowed':'not allowed'}</span>` +
+      (d.recall_window_ticks ? ` · window ${d.recall_window_ticks} ticks` : '');
+    cl.innerHTML =
+      '<p style="color:var(--mut);font-size:13px;margin:12px 0 2px">Key clauses — click one to highlight it:</p>' +
+      d.reason_code_linkage.map(l =>
+        `<div class="clause" onclick="hlClause(this)"><code>${esc(l.reason_code)}</code> ` +
+        `<b>${esc(l.label)}</b><div class="basis">${esc(l.operative_basis)}</div></div>`).join('') +
+      '<p style="color:var(--mut);font-size:13px;margin:12px 0 2px">Legal instruments (official sources):</p>' +
+      d.instruments.map(i =>
+        `<div class="clause" onclick="hlClause(this)"><b>${esc(i.name)}</b> ` +
+        `<span style="color:var(--mut)">(${esc(i.role)})</span>` +
+        `<div class="basis">${esc(i.citation)} — <a href="${esc(i.url)}" target="_blank" rel="noopener">official source ↗</a></div></div>`).join('');
+  }catch(e){ out.className='result bad'; out.textContent = String(e); }
+}
+function hlClause(el){
+  el.parentElement.querySelectorAll('.clause.hl').forEach(x => { if (x !== el) x.classList.remove('hl'); });
+  el.classList.toggle('hl');
+}
+
+// ---- Nash cooperation visualizer: 1-1, 1-n, n-n ---------------------------------
+const NASH_MODES = {
+  '1-1': {buyers:[{id:'client', prefs:['eu_sepa','br_pix','in_upi']}],
+          sellers:[{id:'agent', prefs:['in_upi','br_pix','eu_sepa']}]},
+  '1-n': {buyers:[{id:'buyer', prefs:['eu_sepa','br_pix','in_upi']}],
+          sellers:[{id:'seller-1', prefs:['br_pix','mx_spei']},
+                   {id:'seller-2', prefs:['in_upi','sg_fast']},
+                   {id:'seller-3', prefs:['us_fednow']}]},
+  'n-n': {buyers:[{id:'buyer-1', prefs:['eu_sepa','br_pix']},
+                  {id:'buyer-2', prefs:['in_upi','sg_fast','br_pix']},
+                  {id:'buyer-3', prefs:['us_fednow','us_rtp','ca_interac']}],
+          sellers:[{id:'seller-1', prefs:['br_pix','mx_spei','eu_sepa']},
+                   {id:'seller-2', prefs:['sg_fast','in_upi']},
+                   {id:'seller-3', prefs:['ca_interac','us_rtp']}]},
+};
+async function runNash(mode){
+  document.querySelectorAll('.modebtn').forEach(b => b.classList.toggle('on', b.dataset.m === mode));
+  const m = NASH_MODES[mode], svg = document.getElementById('nashsvg'),
+        note = document.getElementById('nashnote');
+  const pairs = [];
+  m.buyers.forEach((b,i) => m.sellers.forEach((s,j) => pairs.push({b,s,i,j})));
+  note.className='result'; note.textContent = `sending ${pairs.length} POST /regions/recommend call(s)…`;
+  const res = await Promise.all(pairs.map(p =>
+    fetch('/regions/recommend', {method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({client_prefs:p.b.prefs, agent_prefs:p.s.prefs})})
+      .then(r => r.json()).catch(() => null)));
+  const W = 960, rows = Math.max(m.buyers.length, m.sellers.length), H = rows*92 + 40;
+  const yPos = (n,i) => H/2 + (i-(n-1)/2)*92;
+  let h = '';
+  pairs.forEach((p, idx) => {
+    const y1 = yPos(m.buyers.length, p.i), y2 = yPos(m.sellers.length, p.j);
+    const r = res[idx], ok = r && r.agreed_region;
+    h += `<path d="M250 ${y1} C 470 ${y1}, 490 ${y2}, 710 ${y2}" fill="none" `
+       + `stroke="${ok?'#2dd4bf':'#f87171'}" stroke-width="1.6"${ok?'':' stroke-dasharray="5 5"'}/>`;
+    const t = 0.32 + 0.18*p.i, lx = 250 + 460*t, ly = y1 + (y2-y1)*t - 5;
+    h += `<text x="${lx}" y="${ly}" text-anchor="middle" fill="${ok?'#2dd4bf':'#f87171'}" `
+       + `font-size="11" font-weight="700">${ok ? r.agreed_region : 'no shared region'}</text>`;
+  });
+  const box = (x, y, id, prefs) =>
+    `<rect x="${x}" y="${y-26}" width="230" height="52" rx="10" fill="#151d3f" stroke="#26305e"/>` +
+    `<text x="${x+14}" y="${y-5}" fill="#e6eaf6" font-size="12.5" font-weight="600">🤖 ${id}</text>` +
+    `<text x="${x+14}" y="${y+13}" fill="#93a0c4" font-size="9.5">prefs: ${prefs.join(' › ')}</text>`;
+  m.buyers.forEach((b,i) => h += box(20, yPos(m.buyers.length,i), b.id, b.prefs));
+  m.sellers.forEach((s,j) => h += box(710, yPos(m.sellers.length,j), s.id, s.prefs));
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = h;
+  const agreed = [...new Set(res.filter(r => r && r.agreed_region).map(r => r.agreed_region))];
+  const refused = res.filter(r => !r || !r.agreed_region).length;
+  G.nash = new Set(agreed); drawGlobe();
+  note.className='result';
+  note.innerHTML = `${pairs.length} live call(s) — agreed regions: ` +
+    (agreed.length ? agreed.map(a => `<b style="color:var(--coral)">${esc(a)}</b>`).join(', ') : 'none') +
+    (refused ? ` · ${refused} pair(s) refused (no shared region)` : '') +
+    ' — agreed regions are highlighted red on the globe.';
+}
+if (document.getElementById('nashsvg')) runNash('1-1');
 
 // ---- navigation logic: scrollspy, mobile menu, back-to-top ---------------------
 const menuEl = document.getElementById('menu');

@@ -289,6 +289,18 @@ def test_x402_facilitator_endpoints(client: TestClient) -> None:
     assert client.get("/x402/resource/ghost").status_code == 404
 
 
+def test_x402_facilitator_accepts_full_resource_path(client: TestClient) -> None:
+    # The 402 challenge advertises resource as "/x402/resource/<name>"; the
+    # facilitator must accept that form as well as the bare name.
+    h = _x402_header("agent-fp", 15, "n-fullpath")
+    v = client.post("/x402/verify", json={"resource": "/x402/resource/dispute-precedents",
+                                          "payment_header": h}).json()
+    assert v["isValid"] is True
+    s = client.post("/x402/settle", json={"resource": "/x402/resource/dispute-precedents",
+                                          "payment_header": h}).json()
+    assert s["success"] is True and s["amount"] == 15
+
+
 def test_pitch_kit_downloadable(client: TestClient) -> None:
     listing = client.get("/downloads").json()
     assert set(listing["pitch_kit"]) == {"brief-pdf", "summary-pdf",
@@ -376,6 +388,23 @@ def test_cors_open_for_browser_agents(client: TestClient) -> None:
     assert r.headers.get("access-control-allow-origin") == "*"
 
 
+def test_homepage_overview_and_map_wired(client: TestClient) -> None:
+    html = client.get("/", headers={"accept": "text/html"}).text
+    # executive-summary teaser: sourced figures + downloads
+    assert "Adobe" in html and "Juniper Research" in html
+    assert "/download/brief-pdf" in html and "/download/summary-docx" in html
+    # jurisdiction globe: markers for every geographic region + the two chips
+    for key in ("eu_sepa", "br_pix", "in_upi", "us_fednow", "cn_ibps", "ke_mpesa"):
+        assert key in html
+    assert 'id="globe"' in html and "selectRegion" in html and "hlClause" in html
+    assert "/regions/${k}/legal" in html  # clauses load live from the API
+    assert 'data-k="global"' in html and 'data-k="stablecoin_x402"' in html
+    # Nash cooperation modes, all driven by POST /regions/recommend
+    assert "runNash" in html and "NASH_MODES" in html
+    for mode in ("'1-1'", "'1-n'", "'n-n'"):
+        assert mode in html
+
+
 def test_homepage_has_playground_and_dual_use(client: TestClient) -> None:
     html = client.get("/", headers={"accept": "text/html"}).text
     assert "Dual-use by design" in html
@@ -406,8 +435,8 @@ def test_homepage_navigation_is_wired(client: TestClient) -> None:
     assert 'id="menu"' in html
     assert "toggleMenu()" in html
     # every nav item points at a real section id on the page
-    for sec in ("pain", "spectrum", "arch", "components", "law", "personas", "usecases",
-                "api", "try", "downloads"):
+    for sec in ("overview", "pain", "spectrum", "arch", "map", "components", "law",
+                "personas", "usecases", "api", "try", "downloads"):
         assert f'href="#{sec}"' in html
         assert f'id="{sec}"' in html
     # scrollspy + back-to-top logic present
