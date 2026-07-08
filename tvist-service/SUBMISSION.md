@@ -123,7 +123,7 @@ An HTTP API for AI agents that send payments on someone's behalf. It provides, i
 **GitHub repo or pull request URL** (required for code)
 
 ```
-<PR URL — created by ~/nandatown-hackathon-pr/open-pr.sh from branch hackathon/superheroin888-streaming-payments (problem 03, the one-problem-per-participant Phase-1 entry)>
+https://github.com/projnanda/nandatown/pull/93
 ```
 
 (Their guideline "a repo with a SKILL.md at the root is ideal": the SKILL.md is
