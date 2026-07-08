@@ -8,10 +8,11 @@ accounts). Each is one command or one paste.
 
 ## Track A — nandatown plugin PR (charter: docs/hackathon/charter.md)
 
-Branch **`hackathon/tvist-payments`** is ready: rebased onto upstream main as
-of the rebase date (coexists with the merged escrow/bft/pareto/provenance
-PRs), plugin + 4 scenarios + 10 discriminating adversarial validators +
-problem brief 11, **734 tests green at rebase**, ruff/format/pyright clean,
+Branch **`hackathon/tvist-payments`** is ready: rebased onto upstream main
+as of **2026-07-08** (clean rebase, coexists with all merged hackathon PRs
+including #41 EMPIC escrow), plugin + 4 scenarios + 10 discriminating
+adversarial validators + problem brief 11, **821 tests green at rebase**,
+ruff/format/pyright clean, scenario reproduce block re-verified,
 deterministic, no new deps.
 
 Charter compliance:

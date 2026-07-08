@@ -40,7 +40,8 @@ python -c "from pathlib import Path; from nest_core.validators import validate_t
 # flip payments: tvist -> prepaid_credits in the YAML and re-run: gates FAIL.
 ```
 
-CI state on this branch: ruff ✓ · format ✓ · pyright (strict) ✓ · **734 tests
-passed** on top of current main.
+CI state on this branch (rebased onto main, 2026-07-08): ruff ✓ · format ✓ ·
+pyright (strict) ✓ · **821 tests passed** · scenario + validator reproduce
+block re-verified against the trace.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
