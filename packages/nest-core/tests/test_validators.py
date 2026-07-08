@@ -16,6 +16,23 @@ from nest_core.validators import (
     validate_consensus_agreement,
     validate_consensus_no_conflict,
     validate_consensus_validity,
+    validate_empic_all_escrows_terminal,
+    validate_empic_delivery_policy_integrity,
+    validate_empic_escrow_conservation,
+    validate_empic_invalid_delivery_not_paid,
+    validate_empic_max_spend_enforced,
+    validate_empic_no_drain_after_close,
+    validate_empic_no_duplicate_settlement,
+    validate_empic_no_overbill_on_partition,
+    validate_empic_no_release_without_accepted_delivery,
+    validate_empic_no_secret_material,
+    validate_empic_payment_participant_binding,
+    validate_empic_provider_service_binding,
+    validate_empic_pubsub_billing_caps,
+    validate_escrow_bps_in_range,
+    validate_escrow_no_payout_without_delivery,
+    validate_escrow_role_binding,
+    validate_escrow_state_machine,
     validate_events,
     validate_marketplace_no_double_sell,
     validate_marketplace_price_agreement,
@@ -39,6 +56,44 @@ type Event = dict[str, Any]
 
 def _send(agent: str, to: str, msg: str, ts: float = 1.0) -> Event:
     return {"ts": ts, "agent": agent, "kind": "send", "to": to, "msg": msg}
+
+
+def _empic(event: dict[str, Any], *, agent: str = "consumer", tick: int = 0) -> Event:
+    body = {"type": "empic_audit", "tick": tick, **event}
+    return _send(agent, agent, json.dumps(body, sort_keys=True), ts=float(tick))
+
+
+def _empic_delivery(
+    event: dict[str, Any],
+    *,
+    agent: str = "provider",
+    to: str = "consumer",
+    tick: int = 0,
+) -> Event:
+    body = {"type": "empic_delivery", **event}
+    return _send(agent, to, json.dumps(body, sort_keys=True), ts=float(tick))
+
+
+def _empic_weather_policy() -> dict[str, Any]:
+    return {
+        "required_fields": [
+            "temperature_c",
+            "temperature_f",
+            "windspeed_kmh",
+            "timestamp",
+            "tick",
+        ],
+        "numeric_ranges": {
+            "temperature_c": {"min": -50, "max": 60},
+            "temperature_f": {"min": -58, "max": 140},
+            "windspeed_kmh": {"min": 0, "max": 300},
+        },
+        "max_age_ticks": 3,
+        "bind_service_id": True,
+        "bind_provider_id": True,
+        "bind_consumer_id": True,
+        "bind_request_params": True,
+    }
 
 
 def _broadcast(agent: str, msg: str, ts: float = 1.0) -> Event:
@@ -740,6 +795,1015 @@ class TestStreamingValidators:
         assert results[0].passed  # unrelated drop, not a violation
 
 
+class TestEscrowValidators:
+    """Direct validator tests with synthetic broadcast events."""
+
+    @staticmethod
+    def _ev(agent: str, msg: str) -> dict[str, Any]:
+        return {"kind": "broadcast", "agent": agent, "msg": msg}
+
+    @staticmethod
+    def _happy(ref: str = "e1") -> list[dict[str, Any]]:
+        return [
+            TestEscrowValidators._ev(
+                "buyer",
+                f"escrow:opened:ref={ref}:payer=buyer:payee=seller:arbiter=arbiter:amount=250",
+            ),
+            TestEscrowValidators._ev("seller", f"escrow:delivered:ref={ref}:proof=sha256-cafe"),
+            TestEscrowValidators._ev("buyer", f"escrow:released:ref={ref}"),
+        ]
+
+    @staticmethod
+    def _dispute(ref: str = "e2", bps: int = 3000) -> list[dict[str, Any]]:
+        return [
+            TestEscrowValidators._ev(
+                "buyer",
+                f"escrow:opened:ref={ref}:payer=buyer:payee=seller:arbiter=arbiter:amount=400",
+            ),
+            TestEscrowValidators._ev("seller", f"escrow:delivered:ref={ref}:proof=partial"),
+            TestEscrowValidators._ev("buyer", f"escrow:disputed:ref={ref}:reason=incomplete"),
+            TestEscrowValidators._ev("arbiter", f"escrow:arbitrated:ref={ref}:payee_bps={bps}"),
+        ]
+
+    def test_state_machine_passes_happy_path(self) -> None:
+        results = validate_escrow_state_machine(self._happy())
+        assert len(results) == 1
+        assert results[0].passed, results[0].detail
+
+    def test_state_machine_passes_dispute_path(self) -> None:
+        results = validate_escrow_state_machine(self._dispute())
+        assert results[0].passed, results[0].detail
+
+    def test_state_machine_passes_combined(self) -> None:
+        results = validate_escrow_state_machine(self._happy("a") + self._dispute("b"))
+        assert results[0].passed, results[0].detail
+
+    def test_state_machine_fails_on_release_without_delivery(self) -> None:
+        events = [
+            self._ev(
+                "buyer",
+                "escrow:opened:ref=x:payer=buyer:payee=seller:arbiter=arbiter:amount=100",
+            ),
+            self._ev("buyer", "escrow:released:ref=x"),  # skipped delivered
+        ]
+        results = validate_escrow_state_machine(events)
+        assert not results[0].passed
+        assert "illegal transition" in results[0].detail
+
+    def test_state_machine_fails_on_arbitrate_without_dispute(self) -> None:
+        events = [
+            self._ev(
+                "buyer",
+                "escrow:opened:ref=y:payer=buyer:payee=seller:arbiter=arbiter:amount=100",
+            ),
+            self._ev("seller", "escrow:delivered:ref=y:proof=x"),
+            self._ev("arbiter", "escrow:arbitrated:ref=y:payee_bps=5000"),
+        ]
+        results = validate_escrow_state_machine(events)
+        assert not results[0].passed
+
+    def test_state_machine_fails_on_double_release(self) -> None:
+        events = self._happy()
+        events.append(self._ev("buyer", "escrow:released:ref=e1"))
+        results = validate_escrow_state_machine(events)
+        assert not results[0].passed
+
+    def test_state_machine_fails_when_no_escrow_events(self) -> None:
+        # Mirrors what happens under prepaid_credits (no escrow protocol).
+        events = [
+            {"kind": "payment_debited", "agent": "buyer", "amount": 100, "tick": 0},
+            {"kind": "payment_credited", "agent": "seller", "amount": 100, "tick": 0},
+        ]
+        results = validate_escrow_state_machine(events)
+        assert not results[0].passed
+        assert "no escrow lifecycle" in results[0].detail
+
+    def test_role_binding_passes_happy(self) -> None:
+        results = validate_escrow_role_binding(self._happy() + self._dispute())
+        assert results[0].passed, results[0].detail
+
+    def test_role_binding_fails_on_forged_delivery(self) -> None:
+        events = [
+            self._ev(
+                "buyer",
+                "escrow:opened:ref=e1:payer=buyer:payee=seller:arbiter=arbiter:amount=100",
+            ),
+            # An ATTACKER (not seller) tries to claim delivery.
+            self._ev("attacker", "escrow:delivered:ref=e1:proof=fake"),
+        ]
+        results = validate_escrow_role_binding(events)
+        assert not results[0].passed
+        assert "delivered" in results[0].detail and "attacker" in results[0].detail
+
+    def test_role_binding_fails_on_unauthorized_release(self) -> None:
+        events = self._happy()
+        # Replace the legitimate release with an unauthorized one.
+        events[-1] = self._ev("attacker", "escrow:released:ref=e1")
+        results = validate_escrow_role_binding(events)
+        assert not results[0].passed
+
+    def test_role_binding_fails_on_arbitrate_by_non_arbiter(self) -> None:
+        events = self._dispute()
+        events[-1] = self._ev("buyer", "escrow:arbitrated:ref=e2:payee_bps=10000")
+        results = validate_escrow_role_binding(events)
+        assert not results[0].passed
+
+    def test_bps_in_range_passes_at_bounds(self) -> None:
+        results = validate_escrow_bps_in_range(
+            self._dispute("a", bps=0) + self._dispute("b", bps=10000)
+        )
+        assert results[0].passed, results[0].detail
+
+    def test_bps_in_range_fails_negative(self) -> None:
+        events = self._dispute(bps=-1)
+        results = validate_escrow_bps_in_range(events)
+        assert not results[0].passed
+
+    def test_bps_in_range_fails_over_max(self) -> None:
+        events = self._dispute(bps=15000)
+        results = validate_escrow_bps_in_range(events)
+        assert not results[0].passed
+
+    def test_bps_in_range_fails_non_integer(self) -> None:
+        events = [
+            self._ev(
+                "buyer",
+                "escrow:opened:ref=z:payer=buyer:payee=seller:arbiter=arbiter:amount=100",
+            ),
+            self._ev("seller", "escrow:delivered:ref=z:proof=x"),
+            self._ev("buyer", "escrow:disputed:ref=z:reason=x"),
+            self._ev("arbiter", "escrow:arbitrated:ref=z:payee_bps=NaN"),
+        ]
+        results = validate_escrow_bps_in_range(events)
+        assert not results[0].passed
+        assert "non-integer" in results[0].detail
+
+    def test_no_payout_without_delivery_passes(self) -> None:
+        results = validate_escrow_no_payout_without_delivery(self._happy() + self._dispute())
+        assert results[0].passed, results[0].detail
+
+    def test_no_payout_without_delivery_fails_on_skipped_delivery(self) -> None:
+        events = [
+            self._ev(
+                "buyer",
+                "escrow:opened:ref=q:payer=buyer:payee=seller:arbiter=arbiter:amount=100",
+            ),
+            self._ev("buyer", "escrow:released:ref=q"),
+        ]
+        results = validate_escrow_no_payout_without_delivery(events)
+        assert not results[0].passed
+        assert "without prior delivered" in results[0].detail
+
+    def test_no_payout_without_delivery_fails_when_no_payouts_at_all(self) -> None:
+        # Plugin lacks escrow -- no escrow events ever emitted.
+        results = validate_escrow_no_payout_without_delivery([])
+        assert not results[0].passed
+        assert "no escrow payouts" in results[0].detail
+
+
+class TestEmpicPaymentsValidators:
+    """Tests for EMPIC escrow and delivery validators."""
+
+    def test_conservation_passes(self) -> None:
+        """Debited escrow equals released plus refunded funds."""
+        events = [
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p1", "amount": 50}),
+            _empic({"event_type": "empic_escrow_released", "payment_ref": "p1", "amount": 20}),
+            _empic({"event_type": "empic_escrow_refunded", "payment_ref": "p1", "amount": 30}),
+        ]
+
+        results = validate_empic_escrow_conservation(events)
+        assert len(results) == 1
+        assert results[0].passed
+
+    def test_conservation_fails(self) -> None:
+        """Unaccounted escrow fails conservation."""
+        events = [
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p1", "amount": 50}),
+            _empic({"event_type": "empic_escrow_released", "payment_ref": "p1", "amount": 20}),
+        ]
+
+        results = validate_empic_escrow_conservation(events)
+        assert len(results) == 1
+        assert not results[0].passed
+
+    def test_conservation_fails_per_payment_ref_cross_subsidy(self) -> None:
+        """Balanced totals still fail when one escrow subsidizes another."""
+        events = [
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p1", "amount": 50}),
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p2", "amount": 50}),
+            _empic({"event_type": "empic_escrow_released", "payment_ref": "p1", "amount": 70}),
+            _empic({"event_type": "empic_escrow_refunded", "payment_ref": "p2", "amount": 30}),
+        ]
+
+        results = validate_empic_escrow_conservation(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "p1" in results[0].detail
+        assert "p2" in results[0].detail
+
+    def test_no_release_without_accepted_delivery(self) -> None:
+        """Release must reference an accepted delivery id."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "accepted": True,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "amount": 10,
+                }
+            ),
+        ]
+
+        results = validate_empic_no_release_without_accepted_delivery(events)
+        assert len(results) == 1
+        assert results[0].passed
+
+    def test_release_without_accepted_delivery_fails(self) -> None:
+        """Release against rejected evidence fails."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "accepted": False,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "amount": 10,
+                }
+            ),
+        ]
+
+        results = validate_empic_no_release_without_accepted_delivery(events)
+        assert len(results) == 1
+        assert not results[0].passed
+
+    def test_invalid_delivery_not_paid_fails(self) -> None:
+        """Rejected delivery ids must not appear in release events."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "accepted": False,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "amount": 10,
+                }
+            ),
+        ]
+
+        results = validate_empic_invalid_delivery_not_paid(events)
+        assert len(results) == 1
+        assert not results[0].passed
+
+    def test_delivery_policy_integrity_passes(self) -> None:
+        """Accepted delivery must independently satisfy the declared policy."""
+        request_params = {"lat": 42.3601, "lon": -71.0942}
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_acceptance_policy",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "payer": "consumer",
+                    "consumer_id": "consumer",
+                    "provider": "provider",
+                    "request_params": request_params,
+                    "policy": _empic_weather_policy(),
+                }
+            ),
+            _empic_delivery(
+                {
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "service_id": "weather",
+                    "provider_id": "provider",
+                    "consumer_id": "consumer",
+                    "request_params": request_params,
+                    "data": {
+                        "temperature_c": 21.0,
+                        "temperature_f": 69.8,
+                        "windspeed_kmh": 8.0,
+                        "timestamp": "tick-1",
+                        "tick": 1,
+                    },
+                },
+                tick=1,
+            ),
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "accepted": True,
+                },
+                tick=1,
+            ),
+        ]
+
+        results = validate_empic_delivery_policy_integrity(events)
+        assert len(results) == 1
+        assert results[0].passed
+
+    def test_delivery_policy_integrity_fails_bad_data_accepted(self) -> None:
+        """Consumer acceptance cannot bless out-of-range weather data."""
+        request_params = {"lat": 42.3601, "lon": -71.0942}
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_acceptance_policy",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "payer": "consumer",
+                    "consumer_id": "consumer",
+                    "provider": "provider",
+                    "request_params": request_params,
+                    "policy": _empic_weather_policy(),
+                }
+            ),
+            _empic_delivery(
+                {
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "service_id": "weather",
+                    "provider_id": "provider",
+                    "consumer_id": "consumer",
+                    "request_params": request_params,
+                    "data": {
+                        "temperature_c": 120.0,
+                        "temperature_f": 248.0,
+                        "windspeed_kmh": 8.0,
+                        "timestamp": "tick-1",
+                        "tick": 1,
+                    },
+                },
+                tick=1,
+            ),
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "accepted": True,
+                },
+                tick=1,
+            ),
+        ]
+
+        results = validate_empic_delivery_policy_integrity(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "policy accepted=False" in results[0].detail
+
+    def test_delivery_policy_integrity_fails_wrong_service_provider_or_params(self) -> None:
+        """Provider/service/request binding must match the funded service."""
+        request_params = {"lat": 42.3601, "lon": -71.0942}
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_acceptance_policy",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "payer": "consumer",
+                    "consumer_id": "consumer",
+                    "provider": "provider",
+                    "request_params": request_params,
+                    "policy": _empic_weather_policy(),
+                }
+            ),
+            _empic_delivery(
+                {
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "service_id": "weather-spoof",
+                    "provider_id": "provider-spoof",
+                    "consumer_id": "consumer",
+                    "request_params": {"lat": 0, "lon": 0},
+                    "data": {
+                        "temperature_c": 21.0,
+                        "temperature_f": 69.8,
+                        "windspeed_kmh": 8.0,
+                        "timestamp": "tick-1",
+                        "tick": 1,
+                    },
+                },
+                tick=1,
+            ),
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "accepted": True,
+                },
+                tick=1,
+            ),
+        ]
+
+        results = validate_empic_delivery_policy_integrity(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "mismatch" in results[0].detail
+
+    def test_delivery_policy_integrity_fails_wrong_consumer_replay(self) -> None:
+        """A valid payload for the wrong consumer cannot release escrow."""
+        request_params = {"lat": 42.3601, "lon": -71.0942}
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_acceptance_policy",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "payer": "consumer",
+                    "consumer_id": "consumer",
+                    "provider": "provider",
+                    "request_params": request_params,
+                    "policy": _empic_weather_policy(),
+                }
+            ),
+            _empic_delivery(
+                {
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "service_id": "weather",
+                    "provider_id": "provider",
+                    "consumer_id": "consumer-spoof",
+                    "request_params": request_params,
+                    "data": {
+                        "temperature_c": 21.0,
+                        "temperature_f": 69.8,
+                        "windspeed_kmh": 8.0,
+                        "timestamp": "tick-1",
+                        "tick": 1,
+                    },
+                },
+                tick=1,
+            ),
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "accepted": True,
+                },
+                tick=1,
+            ),
+        ]
+
+        results = validate_empic_delivery_policy_integrity(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "consumer_id mismatch" in results[0].detail
+
+    def test_pubsub_billing_caps_pass(self) -> None:
+        """Pubsub release is capped by accepted delivery count and stream terms."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_stream_opened",
+                    "payment_ref": "s1",
+                    "rate_per_tick": 10,
+                    "max_total": 40,
+                    "mode": "pubsub",
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "s1",
+                    "delivery_id": "d1",
+                    "accepted": True,
+                    "mode": "pubsub",
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "s1",
+                    "delivery_id": "d1",
+                    "amount": 10,
+                    "mode": "pubsub",
+                }
+            ),
+        ]
+
+        results = validate_empic_pubsub_billing_caps(events)
+        assert len(results) == 1
+        assert results[0].passed
+
+    def test_pubsub_billing_caps_fails_over_rate(self) -> None:
+        """A single pubsub delivery cannot be paid above the tick rate."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_stream_opened",
+                    "payment_ref": "s1",
+                    "rate_per_tick": 10,
+                    "max_total": 40,
+                    "mode": "pubsub",
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "s1",
+                    "delivery_id": "d1",
+                    "accepted": True,
+                    "mode": "pubsub",
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "s1",
+                    "delivery_id": "d1",
+                    "amount": 20,
+                    "mode": "pubsub",
+                }
+            ),
+        ]
+
+        results = validate_empic_pubsub_billing_caps(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "release 20 > rate 10" in results[0].detail
+
+    def test_pubsub_billing_caps_fails_without_accepted_evidence(self) -> None:
+        """Accepted delivery count limits total pubsub payout."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_stream_opened",
+                    "payment_ref": "s1",
+                    "rate_per_tick": 10,
+                    "max_total": 40,
+                    "mode": "pubsub",
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "s1",
+                    "delivery_id": "d1",
+                    "amount": 10,
+                    "mode": "pubsub",
+                }
+            ),
+        ]
+
+        results = validate_empic_pubsub_billing_caps(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "accepted delivery cap 0" in results[0].detail
+
+    def test_max_spend_enforced_passes(self) -> None:
+        """Funded amount can equal but not exceed consumer max spend."""
+        policy = {**_empic_weather_policy(), "max_spend": 50}
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_acceptance_policy",
+                    "payment_ref": "p1",
+                    "policy": policy,
+                    "max_spend": 50,
+                }
+            ),
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p1", "amount": 50}),
+        ]
+
+        results = validate_empic_max_spend_enforced(events)
+        assert len(results) == 1
+        assert results[0].passed
+
+    def test_max_spend_enforced_fails_over_budget_escrow(self) -> None:
+        """Escrow funding above the consumer budget fails validation."""
+        policy = {**_empic_weather_policy(), "max_spend": 40}
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_acceptance_policy",
+                    "payment_ref": "p1",
+                    "policy": policy,
+                    "max_spend": 40,
+                }
+            ),
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p1", "amount": 50}),
+        ]
+
+        results = validate_empic_max_spend_enforced(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "exceeds declared max_spend" in results[0].detail
+
+    def test_max_spend_enforced_fails_over_budget_stream(self) -> None:
+        """Pubsub stream cap is checked against the consumer budget."""
+        policy = {**_empic_weather_policy(), "max_spend": 30}
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_acceptance_policy",
+                    "payment_ref": "s1",
+                    "policy": policy,
+                    "max_spend": 30,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_stream_opened",
+                    "payment_ref": "s1",
+                    "max_total": 40,
+                    "amount": 40,
+                    "mode": "pubsub",
+                }
+            ),
+        ]
+
+        results = validate_empic_max_spend_enforced(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "funded 40 exceeds" in results[0].detail
+
+    def test_all_escrows_terminal_passes(self) -> None:
+        """Every funded escrow is fully released or refunded."""
+        events = [
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p1", "amount": 50}),
+            _empic({"event_type": "empic_escrow_released", "payment_ref": "p1", "amount": 50}),
+        ]
+
+        results = validate_empic_all_escrows_terminal(events)
+        assert len(results) == 1
+        assert results[0].passed
+
+    def test_all_escrows_terminal_fails_unbalanced(self) -> None:
+        """Partially settled escrow is not terminal."""
+        events = [
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p1", "amount": 50}),
+            _empic({"event_type": "empic_escrow_released", "payment_ref": "p1", "amount": 10}),
+        ]
+
+        results = validate_empic_all_escrows_terminal(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "not terminal" in results[0].detail
+
+    def test_all_escrows_terminal_fails_pubsub_refund_without_close(self) -> None:
+        """Pubsub refund must correspond to an observed close."""
+        events = [
+            _empic({"event_type": "empic_stream_opened", "payment_ref": "s1", "mode": "pubsub"}),
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "s1", "amount": 40}),
+            _empic({"event_type": "empic_escrow_refunded", "payment_ref": "s1", "amount": 40}),
+        ]
+
+        results = validate_empic_all_escrows_terminal(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "without stream close" in results[0].detail
+
+    def test_no_duplicate_settlement_fails_duplicate_release(self) -> None:
+        """Replay of the same delivery evidence must be caught."""
+        events = [
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p1", "amount": 50}),
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "accepted": True,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "amount": 25,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "amount": 25,
+                }
+            ),
+        ]
+
+        results = validate_empic_no_duplicate_settlement(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "duplicate release" in results[0].detail
+
+    def test_no_duplicate_settlement_fails_duplicate_debit_and_refund(self) -> None:
+        """Payment refs cannot be debited or refunded twice."""
+        events = [
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p1", "amount": 50}),
+            _empic({"event_type": "empic_escrow_debited", "payment_ref": "p1", "amount": 50}),
+            _empic({"event_type": "empic_escrow_refunded", "payment_ref": "p1", "amount": 25}),
+            _empic({"event_type": "empic_escrow_refunded", "payment_ref": "p1", "amount": 25}),
+        ]
+
+        results = validate_empic_no_duplicate_settlement(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "duplicate escrow debit" in results[0].detail
+        assert "duplicate refund" in results[0].detail
+
+    def test_provider_service_binding_passes(self) -> None:
+        """Debit and release bind to the registered provider for a service."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_service_registered",
+                    "service_id": "weather",
+                    "provider": "provider",
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_debited",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "provider": "provider",
+                    "amount": 50,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "provider": "provider",
+                    "delivery_id": "d1",
+                    "amount": 50,
+                }
+            ),
+        ]
+
+        results = validate_empic_provider_service_binding(events)
+        assert len(results) == 1
+        assert results[0].passed
+
+    def test_provider_service_binding_fails_wrong_provider(self) -> None:
+        """Settlement cannot redirect release to a different provider."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_service_registered",
+                    "service_id": "weather",
+                    "provider": "provider",
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_debited",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "provider": "provider",
+                    "amount": 50,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "provider": "attacker",
+                    "delivery_id": "d1",
+                    "amount": 50,
+                }
+            ),
+        ]
+
+        results = validate_empic_provider_service_binding(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "does not match" in results[0].detail
+
+    def test_provider_service_binding_fails_unregistered_service(self) -> None:
+        """Consumers cannot fund a service that has no provider registration."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_escrow_debited",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "provider": "provider",
+                    "amount": 50,
+                }
+            ),
+        ]
+
+        results = validate_empic_provider_service_binding(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "was not registered" in results[0].detail
+
+    def test_payment_participant_binding_passes(self) -> None:
+        """Lifecycle events keep the same payer, consumer, provider, service, and mode."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_acceptance_policy",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "payer": "consumer",
+                    "consumer_id": "consumer",
+                    "provider": "provider",
+                    "mode": "pull",
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_debited",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "payer": "consumer",
+                    "consumer_id": "consumer",
+                    "provider": "provider",
+                    "mode": "pull",
+                    "amount": 50,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_delivery_evaluated",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "service_id": "weather",
+                    "payer": "consumer",
+                    "consumer_id": "consumer",
+                    "provider": "provider",
+                    "mode": "pull",
+                    "accepted": True,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "service_id": "weather",
+                    "payer": "consumer",
+                    "consumer_id": "consumer",
+                    "provider": "provider",
+                    "mode": "pull",
+                    "amount": 50,
+                }
+            ),
+        ]
+
+        results = validate_empic_payment_participant_binding(events)
+        assert len(results) == 1
+        assert results[0].passed
+
+    def test_payment_participant_binding_fails_rebound_ref(self) -> None:
+        """A payment ref cannot switch consumer/provider/service identity."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_escrow_debited",
+                    "payment_ref": "p1",
+                    "service_id": "weather",
+                    "payer": "consumer",
+                    "consumer_id": "consumer",
+                    "provider": "provider",
+                    "mode": "pull",
+                    "amount": 50,
+                }
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "p1",
+                    "delivery_id": "d1",
+                    "service_id": "weather",
+                    "payer": "attacker",
+                    "consumer_id": "attacker",
+                    "provider": "provider",
+                    "mode": "pull",
+                    "amount": 50,
+                }
+            ),
+        ]
+
+        results = validate_empic_payment_participant_binding(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "payer changed" in results[0].detail
+        assert "consumer_id changed" in results[0].detail
+
+    def test_no_secret_material_passes_public_metadata(self) -> None:
+        """Public wallet-style metadata can appear in traces."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_service_registered",
+                    "service_id": "weather",
+                    "provider": "provider",
+                    "wallet_address": "0x00000000000000000000000000000000000000aa",
+                    "did": "did:empic:test",
+                }
+            )
+        ]
+
+        results = validate_empic_no_secret_material(events)
+        assert len(results) == 1
+        assert results[0].passed
+
+    def test_no_secret_material_fails_private_key(self) -> None:
+        """Trace messages must not leak private keys or API secrets."""
+        private_marker = "-----BEGIN " + "PRIVATE " + "KEY-----\nredacted"
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_service_registered",
+                    "service_id": "weather",
+                    "provider": "provider",
+                    "private_key": private_marker,
+                }
+            )
+        ]
+
+        results = validate_empic_no_secret_material(events)
+        assert len(results) == 1
+        assert not results[0].passed
+        assert "private_key" in results[0].detail
+
+    def test_no_drain_after_close_fails(self) -> None:
+        """Pubsub release after stream close is an attack."""
+        events = [
+            _empic(
+                {"event_type": "empic_stream_closed", "payment_ref": "s1", "mode": "pubsub"},
+                tick=2,
+            ),
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "s1",
+                    "mode": "pubsub",
+                    "delivery_id": "d1",
+                    "amount": 10,
+                },
+                tick=3,
+            ),
+        ]
+
+        results = validate_empic_no_drain_after_close(events)
+        assert len(results) == 1
+        assert not results[0].passed
+
+    def test_no_overbill_on_partition_fails(self) -> None:
+        """Pubsub release after a dropped edge between parties is an attack."""
+        events = [
+            _empic(
+                {
+                    "event_type": "empic_stream_opened",
+                    "payment_ref": "s1",
+                    "payer": "consumer",
+                    "provider": "provider",
+                },
+                tick=0,
+            ),
+            {"kind": "dropped", "from": "provider", "agent": "consumer", "ts": 2.0},
+            _empic(
+                {
+                    "event_type": "empic_escrow_released",
+                    "payment_ref": "s1",
+                    "mode": "pubsub",
+                    "delivery_id": "d1",
+                    "amount": 10,
+                },
+                tick=3,
+            ),
+        ]
+
+        results = validate_empic_no_overbill_on_partition(events)
+        assert len(results) == 1
+        assert not results[0].passed
+
+
 class TestValidatorRegistry:
     def test_all_scenario_types_registered(self) -> None:
         expected = {
@@ -752,8 +1816,13 @@ class TestValidatorRegistry:
             "identity_rotation",
             "memory_concurrent_writers",
             "streaming_payments",
+            "empic_payments",
             "comms_versioning",
             "receipt_reputation",
+            "multi_attribute_market",
+            "provenance_supply_chain",
+            "bft_hotstuff",
+            "escrow_marketplace",
             "tvist_disputes",
             "tvist_escrow",
             "tvist_region",
