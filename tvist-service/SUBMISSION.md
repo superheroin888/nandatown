@@ -52,26 +52,26 @@ https://github.com/superheroin888/tvist-api
 
 (Alternatives: "Hosted link" -> the permanent raw file
 `https://raw.githubusercontent.com/superheroin888/tvist-api/main/SKILL.md`,
-or the live sandbox `https://panels-ntsc-density-genesis.trycloudflare.com/skill.md`;
+or the live sandbox `https://robert-escape-que-search.trycloudflare.com/skill.md`;
 or "Paste directly" -> paste the contents of `SKILL.md`.)
 
 **Live endpoint URLs (one per line)**
 
 ```
-https://panels-ntsc-density-genesis.trycloudflare.com/health
-https://panels-ntsc-density-genesis.trycloudflare.com/
-https://panels-ntsc-density-genesis.trycloudflare.com/skill.md
-https://panels-ntsc-density-genesis.trycloudflare.com/regions
-https://panels-ntsc-density-genesis.trycloudflare.com/regions/suggest
-https://panels-ntsc-density-genesis.trycloudflare.com/regions/recommend
-https://panels-ntsc-density-genesis.trycloudflare.com/consent
-https://panels-ntsc-density-genesis.trycloudflare.com/pay
-https://panels-ntsc-density-genesis.trycloudflare.com/escrow
-https://panels-ntsc-density-genesis.trycloudflare.com/recall
-https://panels-ntsc-density-genesis.trycloudflare.com/dispute
-https://panels-ntsc-density-genesis.trycloudflare.com/taxonomy
-https://panels-ntsc-density-genesis.trycloudflare.com/x402/resource/market-report
-https://panels-ntsc-density-genesis.trycloudflare.com/openapi.json
+https://robert-escape-que-search.trycloudflare.com/health
+https://robert-escape-que-search.trycloudflare.com/
+https://robert-escape-que-search.trycloudflare.com/skill.md
+https://robert-escape-que-search.trycloudflare.com/regions
+https://robert-escape-que-search.trycloudflare.com/regions/suggest
+https://robert-escape-que-search.trycloudflare.com/regions/recommend
+https://robert-escape-que-search.trycloudflare.com/consent
+https://robert-escape-que-search.trycloudflare.com/pay
+https://robert-escape-que-search.trycloudflare.com/escrow
+https://robert-escape-que-search.trycloudflare.com/recall
+https://robert-escape-que-search.trycloudflare.com/dispute
+https://robert-escape-que-search.trycloudflare.com/taxonomy
+https://robert-escape-que-search.trycloudflare.com/x402/resource/market-report
+https://robert-escape-que-search.trycloudflare.com/openapi.json
 ```
 
 **Tags (optional)**
@@ -83,7 +83,7 @@ escrow, payments, disputes, consent, jurisdiction, x402, m2m
 ### A-alt. Register without the form (their documented API)
 
 ```bash
-BASE=https://panels-ntsc-density-genesis.trycloudflare.com
+BASE=https://robert-escape-que-search.trycloudflare.com
 curl -X POST https://nandatown.projectnanda.org/api/skills \
   -H 'content-type: application/json' \
   -d "{
@@ -140,7 +140,7 @@ https://github.com/superheroin888/nandatown/pull/1.)
 **Live demo URL** ("Must be reachable right now")
 
 ```
-https://panels-ntsc-density-genesis.trycloudflare.com
+https://robert-escape-que-search.trycloudflare.com
 ```
 
 **Live endpoints agents can call (one per line)** — same list as section A.
@@ -152,7 +152,7 @@ https://panels-ntsc-density-genesis.trycloudflare.com
 ## 30-second proof for judges (copy-paste)
 
 ```bash
-BASE=https://panels-ntsc-density-genesis.trycloudflare.com
+BASE=https://robert-escape-que-search.trycloudflare.com
 # Nash-optimal jurisdiction for two parties who want different things
 curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
   -d '{"client_prefs":["eu_sepa","br_pix","in_upi"],"agent_prefs":["in_upi","br_pix","eu_sepa"]}'
