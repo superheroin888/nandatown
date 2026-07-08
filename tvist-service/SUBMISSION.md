@@ -127,7 +127,9 @@ https://github.com/projnanda/nandatown/pull/93
 ```
 
 (Their guideline "a repo with a SKILL.md at the root is ideal": the SKILL.md is
-hosted live at `<base-url>/skill.md` and in-repo at `tvist-service/SKILL.md`.)
+hosted live at `<base-url>/skill.md` and in-repo at `tvist-service/SKILL.md`.
+The full Phase-2 service diff is reviewable at
+https://github.com/superheroin888/nandatown/pull/1.)
 
 **Live demo URL** ("Must be reachable right now")
 
