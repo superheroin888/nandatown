@@ -70,7 +70,7 @@ The same checks apply to all four payment relationships:
 ## Base URL
 
 ```
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com
+https://panels-ntsc-density-genesis.trycloudflare.com
 ```
 
 - Health check: `GET /health` returns `{"status":"ok"}`.
@@ -116,7 +116,7 @@ failed>"}` with a 4xx status code.
 Set the base URL once:
 
 ```bash
-BASE=https://deputy-increasingly-tutorial-contractors.trycloudflare.com
+BASE=https://panels-ntsc-density-genesis.trycloudflare.com
 ```
 
 ### Step 1 — agree the governing jurisdiction
@@ -288,7 +288,7 @@ A `delegation_id` is accepted anywhere a `consent_id` is: in `/pay`, in x402
 ## Full worked example — an agent books travel for its principal
 
 ```bash
-BASE=https://deputy-increasingly-tutorial-contractors.trycloudflare.com
+BASE=https://panels-ntsc-density-genesis.trycloudflare.com
 # 1. Agree the jurisdiction.
 curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
   -d '{"client_prefs":["in_upi"],"agent_prefs":["in_upi"]}'          # -> in_upi

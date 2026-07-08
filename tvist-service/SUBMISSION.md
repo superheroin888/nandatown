@@ -47,7 +47,7 @@ superheroin888
 **SKILL.md** — pick "Hosted link" and give:
 
 ```
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/skill.md
+https://panels-ntsc-density-genesis.trycloudflare.com/skill.md
 ```
 
 (Alternatives the form accepts: "GitHub repo" → link to `tvist-service/SKILL.md`
@@ -56,20 +56,20 @@ in your fork; or "Paste directly" → paste the contents of `tvist-service/SKILL
 **Live endpoint URLs (one per line)**
 
 ```
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/health
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/skill.md
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/regions
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/regions/suggest
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/regions/recommend
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/consent
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/pay
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/escrow
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/recall
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/dispute
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/taxonomy
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/x402/resource/market-report
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com/openapi.json
+https://panels-ntsc-density-genesis.trycloudflare.com/health
+https://panels-ntsc-density-genesis.trycloudflare.com/
+https://panels-ntsc-density-genesis.trycloudflare.com/skill.md
+https://panels-ntsc-density-genesis.trycloudflare.com/regions
+https://panels-ntsc-density-genesis.trycloudflare.com/regions/suggest
+https://panels-ntsc-density-genesis.trycloudflare.com/regions/recommend
+https://panels-ntsc-density-genesis.trycloudflare.com/consent
+https://panels-ntsc-density-genesis.trycloudflare.com/pay
+https://panels-ntsc-density-genesis.trycloudflare.com/escrow
+https://panels-ntsc-density-genesis.trycloudflare.com/recall
+https://panels-ntsc-density-genesis.trycloudflare.com/dispute
+https://panels-ntsc-density-genesis.trycloudflare.com/taxonomy
+https://panels-ntsc-density-genesis.trycloudflare.com/x402/resource/market-report
+https://panels-ntsc-density-genesis.trycloudflare.com/openapi.json
 ```
 
 **Tags (optional)**
@@ -81,7 +81,7 @@ escrow, payments, disputes, consent, jurisdiction, x402, m2m
 ### A-alt. Register without the form (their documented API)
 
 ```bash
-BASE=https://deputy-increasingly-tutorial-contractors.trycloudflare.com
+BASE=https://panels-ntsc-density-genesis.trycloudflare.com
 curl -X POST https://nandatown.projectnanda.org/api/skills \
   -H 'content-type: application/json' \
   -d "{
@@ -132,7 +132,7 @@ hosted live at `<base-url>/skill.md` and in-repo at `tvist-service/SKILL.md`.)
 **Live demo URL** ("Must be reachable right now")
 
 ```
-https://deputy-increasingly-tutorial-contractors.trycloudflare.com
+https://panels-ntsc-density-genesis.trycloudflare.com
 ```
 
 **Live endpoints agents can call (one per line)** — same list as section A.
@@ -144,7 +144,7 @@ https://deputy-increasingly-tutorial-contractors.trycloudflare.com
 ## 30-second proof for judges (copy-paste)
 
 ```bash
-BASE=https://deputy-increasingly-tutorial-contractors.trycloudflare.com
+BASE=https://panels-ntsc-density-genesis.trycloudflare.com
 # Nash-optimal jurisdiction for two parties who want different things
 curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
   -d '{"client_prefs":["eu_sepa","br_pix","in_upi"],"agent_prefs":["in_upi","br_pix","eu_sepa"]}'
