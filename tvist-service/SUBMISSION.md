@@ -44,14 +44,16 @@ Maria Lindström · maria.aj.lindstrom@gmail.com
 superheroin888
 ```
 
-**SKILL.md** — pick "Hosted link" and give:
+**SKILL.md** — pick "GitHub repo" (their "ideal": a repo with SKILL.md at the root):
 
 ```
-https://panels-ntsc-density-genesis.trycloudflare.com/skill.md
+https://github.com/superheroin888/tvist-api
 ```
 
-(Alternatives the form accepts: "GitHub repo" → link to `tvist-service/SKILL.md`
-in your fork; or "Paste directly" → paste the contents of `tvist-service/SKILL.md`.)
+(Alternatives: "Hosted link" -> the permanent raw file
+`https://raw.githubusercontent.com/superheroin888/tvist-api/main/SKILL.md`,
+or the live sandbox `https://panels-ntsc-density-genesis.trycloudflare.com/skill.md`;
+or "Paste directly" -> paste the contents of `SKILL.md`.)
 
 **Live endpoint URLs (one per line)**
 
@@ -87,7 +89,7 @@ curl -X POST https://nandatown.projectnanda.org/api/skills \
   -d "{
     \"name\": \"Tvist API — escrow, consent & dispute layer for AI agents\",
     \"source_type\": \"url\",
-    \"source_url\": \"$BASE/skill.md\",
+    \"source_url\": \"https://raw.githubusercontent.com/superheroin888/tvist-api/main/SKILL.md\",
     \"endpoints\": \"GET $BASE/health\nGET $BASE/regions\nPOST $BASE/regions/recommend\nPOST $BASE/consent\nPOST $BASE/pay\nPOST $BASE/escrow\nPOST $BASE/recall\nPOST $BASE/dispute\nGET $BASE/x402/resource/market-report\"
   }"
 ```
@@ -123,8 +125,12 @@ An HTTP API for AI agents that send payments on someone's behalf. It provides, i
 **GitHub repo or pull request URL** (required for code)
 
 ```
-https://github.com/projnanda/nandatown/pull/93
+https://github.com/superheroin888/tvist-api
 ```
+
+(Also relevant: the official Phase-1 plugin PR
+https://github.com/projnanda/nandatown/pull/93, and the full service diff at
+https://github.com/superheroin888/nandatown/pull/1.)
 
 (Their guideline "a repo with a SKILL.md at the root is ideal": the SKILL.md is
 hosted live at `<base-url>/skill.md` and in-repo at `tvist-service/SKILL.md`.
