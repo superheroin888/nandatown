@@ -41,8 +41,14 @@ A TryCloudflare tunnel rotates on restart — submit a permanent URL.
 - [x] deploy configs: Dockerfile / Procfile / railway.json / render.yaml / fly.toml
 - [x] SUBMISSION.md = exact fill-in sheet for both forms (field names verbatim,
       answers prepared), plus their documented no-form API POST alternative
-- ☐ 1. deploy permanently (pick one, from tvist-service/):
-      `railway init && railway up`   ·   `fly launch --now`   ·   Render: connect repo
+- ☐ 1. log in once, then deploy (both CLIs are already installed):
+      Railway (no card needed for trial):
+        `railway login`   (browser opens — approve)
+        `cd ~/nandatown-src/tvist-service && railway init --name tvist-api && railway up`
+      or Fly (asks for payment info on new accounts):
+        `fly auth login`
+        `cd ~/nandatown-src/tvist-service && fly launch --now --copy-config --yes`
+      or Render: connect the repo in the dashboard (render.yaml is picked up)
 - ☐ 2. `./deploy/set-base-url.sh https://<permanent-url>`
       (swaps every URL in SKILL.md / README.md / SUBMISSION.md + smoke-tests;
       commit the swap)
