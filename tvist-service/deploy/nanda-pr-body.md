@@ -43,5 +43,3 @@ python -c "from pathlib import Path; from nest_core.validators import validate_t
 CI state on this branch (rebased onto main, 2026-07-08): ruff ✓ · format ✓ ·
 pyright (strict) ✓ · **821 tests passed** · scenario + validator reproduce
 block re-verified against the trace.
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
