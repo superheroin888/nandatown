@@ -35,13 +35,13 @@ Escrow, consent enforcement, jurisdiction agreement (Nash bargaining over 22 rea
 **Your name/team and email**
 
 ```
-<your name> · maria.aj.lindstrom@gmail.com
+Maria Lindström · maria.aj.lindstrom@gmail.com
 ```
 
 **GitHub username**
 
 ```
-<your GitHub username>
+superheroin888
 ```
 
 **SKILL.md** — pick "Hosted link" and give:
@@ -111,7 +111,7 @@ Tvist — escrow, consent & dispute layer for AI agents (payments layer)
 **Your name, team, or company**
 
 ```
-<your name>
+Maria Lindström
 ```
 
 **One-paragraph description**
@@ -123,7 +123,7 @@ An HTTP API for AI agents that send payments on someone's behalf. It provides, i
 **GitHub repo or pull request URL** (required for code)
 
 ```
-<PR URL — created by ./deploy/open-nanda-pr.sh from branch hackathon/tvist-payments>
+<PR URL — created by ~/nandatown-hackathon-pr/open-pr.sh from branch hackathon/superheroin888-streaming-payments (problem 03, the one-problem-per-participant Phase-1 entry)>
 ```
 
 (Their guideline "a repo with a SKILL.md at the root is ideal": the SKILL.md is
