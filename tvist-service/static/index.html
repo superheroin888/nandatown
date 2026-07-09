@@ -141,7 +141,7 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
 
 <span id="top"></span>
 <nav><div class="wrap">
-  <a class="logo" href="#top" title="Back to top">tvist<b>.ai</b></a>
+  <a class="logo" href="#top" title="Back to top">tvist<b>.api</b></a>
   <span class="tag a" style="margin:0">sandbox</span>
   <div class="menu" id="menu">
     <a class="item" href="#overview">Overview</a>
@@ -566,6 +566,34 @@ curl -s <span class="g origin">this URL</span>/skill.md  <span class="c"># the f
       in each box. A teal edge is labeled with the agreed region — the Nash bargaining solution
       over both rankings. A red dashed edge means the pair shares no region and must not
       transact. Agreed regions turn red on the globe above.</p>
+      <div style="background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0">
+        <b style="color:var(--teal)">How the Nash choice works, step by step</b>
+        <ol style="color:var(--mut);font-size:13.5px;margin:8px 0 0 18px;line-height:1.7">
+          <li><b style="color:var(--txt)">Rank.</b> Each party lists the jurisdictions it accepts, best first.
+              A list of length N gives its first choice N points, its second N−1, and so on.
+              A region not on the list gets no points — it is unacceptable.</li>
+          <li><b style="color:var(--txt)">Intersect.</b> Only regions on <i>both</i> lists are feasible.
+              If the intersection is empty, the answer is <code>agreed_region: null</code>: no deal,
+              because any pick would force a jurisdiction on someone who rejected it.</li>
+          <li><b style="color:var(--txt)">Multiply, don't add.</b> For each feasible region, multiply the two
+              scores: u<sub>client</sub> × u<sub>agent</sub>. The region with the largest product wins.
+              Multiplying is the point: a region one side loves and the other barely tolerates
+              scores 3×1&nbsp;=&nbsp;3, while a region both rank second scores 2×2&nbsp;=&nbsp;4 —
+              the product rewards <i>mutual</i> acceptability and punishes lopsided picks.
+              This is the Nash bargaining solution, and neither party gains by demanding its own
+              first choice: outside the agreed pick, the counterparty simply refuses.</li>
+          <li><b style="color:var(--txt)">Break ties fairly.</b> Equal products → prefer the region whose
+              <i>worse-off</i> party scores higher (maximin), then the higher total, then the
+              alphabetically first id — so the result is always deterministic.</li>
+        </ol>
+        <p style="color:var(--mut);font-size:13px;margin-top:10px">
+          Worked example (the 1–1 mode below): client ranks
+          <code>eu_sepa&nbsp;›&nbsp;br_pix&nbsp;›&nbsp;in_upi</code> (3, 2, 1 points), agent ranks
+          <code>in_upi&nbsp;›&nbsp;br_pix&nbsp;›&nbsp;eu_sepa</code> (3, 2, 1). Products:
+          eu_sepa 3×1=3 · <b style="color:var(--teal)">br_pix 2×2=4</b> · in_upi 1×3=3.
+          Result: <code>br_pix</code> — each side's second choice beats either side's first,
+          because it is the pick both can live with.</p>
+      </div>
       <div class="btnrow">
         <button class="btn mini modebtn" data-m="1-1" onclick="runNash('1-1')">1–1 · one client, one agent</button>
         <button class="btn mini modebtn" data-m="1-n" onclick="runNash('1-n')">1–n · one buyer, three sellers</button>
@@ -959,7 +987,7 @@ curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
     </div>
   </div>
   <p class="legal">
-    <b>tvist<span style="color:var(--teal)">.ai</span></b> — escrow, consent &amp; dispute for AI agents ·
+    <b>tvist<span style="color:var(--teal)">.api</span></b> — escrow, consent &amp; dispute for AI agents ·
     dual-use: humans get this page, agents get JSON at the same URL ·
     built on the Tvist payments layer from the Nanda Town hackathon ·
     <a href="#top">back to top ↑</a><br><br>
