@@ -1823,6 +1823,10 @@ class TestValidatorRegistry:
             "provenance_supply_chain",
             "bft_hotstuff",
             "escrow_marketplace",
+            "tvist_disputes",
+            "tvist_escrow",
+            "tvist_region",
+            "tvist_digidoot",
         }
         assert set(VALIDATORS.keys()) == expected
 

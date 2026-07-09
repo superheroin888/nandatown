@@ -3728,6 +3728,547 @@ def validate_bft_no_stuck_view(
 
 
 # ---------------------------------------------------------------------------
+# Tvist dispute + escrow validators (adversarial)
+# ---------------------------------------------------------------------------
+
+# Evidence categories that, when verified, prove the cardholder received the
+# goods — so a dispute the merchant can cite them against is friendly fraud and
+# must never be refunded.
+_TVIST_STRONG_EVIDENCE = frozenset({"delivery_signed", "delivery"})
+
+
+def _tvist_lines(events: list[dict[str, Any]], tag: str) -> list[list[str]]:
+    """Return the ``:``-split fields of every ``tvist:<tag>:...`` broadcast line.
+
+    Reads from send/broadcast bodies (signature suffix stripped), so the checks
+    judge the protocol the orchestrator actually emitted.
+
+    Example::
+
+        outcomes = _tvist_lines(events, "outcome")
+    """
+    prefix = f"tvist:{tag}:"
+    out: list[list[str]] = []
+    for ev in events:
+        if ev.get("kind") not in ("send", "broadcast"):
+            continue
+        msg = _message_body(ev)
+        if msg.startswith(prefix):
+            out.append(msg.split(":"))
+    return out
+
+
+def validate_tvist_conservation(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """Total system funds are identical across every ``tvist:conservation`` snapshot.
+
+    A dispute or escrow flow that creates or destroys money (a double refund, a
+    release that also leaves the hold funded) shows up as a changed total. With a
+    single snapshot the check still confirms one was emitted.
+
+    Example::
+
+        results = validate_tvist_conservation(events)
+    """
+    totals: list[int] = []
+    for parts in _tvist_lines(events, "conservation"):
+        if len(parts) >= 3:
+            try:
+                totals.append(int(parts[2]))
+            except ValueError:
+                continue
+    if not totals:
+        return [ValidationResult("tvist_conservation", False, "no conservation snapshot emitted")]
+    if len(set(totals)) != 1:
+        return [
+            ValidationResult(
+                "tvist_conservation",
+                False,
+                f"funds not conserved across snapshots: {sorted(set(totals))}",
+            )
+        ]
+    return [ValidationResult("tvist_conservation", True, f"funds conserved at {totals[0]}")]
+
+
+def validate_tvist_evidence_gated(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """A dispute the merchant can rebut with verified delivery evidence is never refunded.
+
+    Builds, per txn, whether a verified ``delivery_signed``/``delivery`` artifact
+    was cited, then checks the outcome. The protocol holds iff:
+
+    * at least one such friendly-fraud txn exists (the scenario exercised it), and
+    * **every** txn with verified delivery evidence resolved as ``represented``
+      with ``merchant_won`` — the reversal was deflected.
+
+    ``payments: tvist`` PASSES (the evidence gate represents friendly fraud);
+    ``payments: prepaid_credits`` FAILS (it refunds every dispute, reimbursing the
+    fraud). A plugin that emits no outcomes also fails — without crashing.
+
+    Example::
+
+        results = validate_tvist_evidence_gated(events)
+    """
+    strong: dict[str, bool] = defaultdict(bool)
+    for parts in _tvist_lines(events, "evidence"):
+        # tvist:evidence:<txn>:<hash8>:<verified>:<kind>
+        if len(parts) < 6:
+            continue
+        txn, verified, kind = parts[2], parts[4], parts[5]
+        if verified == "1" and kind in _TVIST_STRONG_EVIDENCE:
+            strong[txn] = True
+
+    outcomes: dict[str, tuple[str, str]] = {}
+    for parts in _tvist_lines(events, "outcome"):
+        # tvist:outcome:<txn>:<outcome>:<merchant_won>
+        if len(parts) < 5:
+            continue
+        outcomes[parts[2]] = (parts[3], parts[4])
+
+    friendly_fraud = [t for t, has in strong.items() if has]
+    if not friendly_fraud:
+        return [
+            ValidationResult(
+                "tvist_evidence_gated",
+                False,
+                "no friendly-fraud txn with verified delivery evidence was exercised",
+            )
+        ]
+
+    leaks: list[str] = []
+    for txn in friendly_fraud:
+        outcome = outcomes.get(txn)
+        if outcome is None:
+            leaks.append(f"{txn}: no outcome emitted")
+        elif outcome != ("represented", "1"):
+            leaks.append(f"{txn}: refunded despite verified delivery evidence (outcome {outcome})")
+
+    if leaks:
+        return [ValidationResult("tvist_evidence_gated", False, "; ".join(leaks))]
+    return [
+        ValidationResult(
+            "tvist_evidence_gated",
+            True,
+            f"{len(friendly_fraud)} friendly-fraud disputes represented, none refunded",
+        )
+    ]
+
+
+def validate_tvist_no_blind_refund(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """A refund only issues when the win-probability is below the fight threshold.
+
+    Independent of the evidence check: it reads the issuer's own ``tvist:score``
+    line and asserts no ``refunded`` outcome carries a score at or above its
+    threshold. Catches a plugin that concedes money it had the evidence to fight.
+
+    Example::
+
+        results = validate_tvist_no_blind_refund(events)
+    """
+    scores: dict[str, tuple[float, float]] = {}
+    for parts in _tvist_lines(events, "score"):
+        # tvist:score:<txn>:<score>:<threshold>
+        if len(parts) < 5:
+            continue
+        try:
+            scores[parts[2]] = (float(parts[3]), float(parts[4]))
+        except ValueError:
+            continue
+
+    blind: list[str] = []
+    refunds = 0
+    for parts in _tvist_lines(events, "outcome"):
+        if len(parts) < 5 or parts[3] != "refunded":
+            continue
+        refunds += 1
+        score_threshold = scores.get(parts[2])
+        if score_threshold is not None and score_threshold[0] >= score_threshold[1]:
+            blind.append(
+                f"{parts[2]}: refunded at score {score_threshold[0]:.2f} "
+                f">= threshold {score_threshold[1]:.2f}"
+            )
+
+    if blind:
+        return [ValidationResult("tvist_no_blind_refund", False, "; ".join(blind))]
+    return [
+        ValidationResult(
+            "tvist_no_blind_refund",
+            True,
+            f"{refunds} refund(s), all below the fight threshold",
+        )
+    ]
+
+
+def validate_tvist_irrevocability(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """A settled irrevocable A2A payment is reversed only on a verifiable-intent mismatch.
+
+    Reads ``tvist:settle`` (with the irrevocable flag) and ``tvist:recall`` lines.
+    The protocol holds iff at least one irrevocable settlement occurred and
+    **every** reversal (``reversed=1``) is backed by ``intent_valid=1`` — proof the
+    agent exceeded its mandate. A unilateral clawback (``reversed=1`` with
+    ``intent_valid=0``) is a violation.
+
+    ``payments: tvist`` PASSES (``recall_a2a`` refuses a clawback with no
+    mismatch); ``payments: prepaid_credits`` FAILS (``refund`` reverses any
+    settled payment unconditionally).
+
+    Example::
+
+        results = validate_tvist_irrevocability(events)
+    """
+    irrevocable: set[str] = set()
+    for parts in _tvist_lines(events, "settle"):
+        # tvist:settle:<txn>:<rail>:<payer>:<payee>:<amount>:<irrevocable>
+        if len(parts) >= 8 and parts[7] == "1":
+            irrevocable.add(parts[2])
+
+    if not irrevocable:
+        return [
+            ValidationResult(
+                "tvist_irrevocability",
+                False,
+                "no irrevocable A2A settlement was exercised",
+            )
+        ]
+
+    clawbacks: list[str] = []
+    for parts in _tvist_lines(events, "recall"):
+        # tvist:recall:<txn>:<intent_valid>:<reversed>
+        if len(parts) < 5:
+            continue
+        txn, intent_valid, reversed_ = parts[2], parts[3], parts[4]
+        if reversed_ == "1" and intent_valid != "1":
+            clawbacks.append(f"{txn}: reversed with no intent mismatch (unilateral clawback)")
+
+    if clawbacks:
+        return [ValidationResult("tvist_irrevocability", False, "; ".join(clawbacks))]
+    return [
+        ValidationResult(
+            "tvist_irrevocability",
+            True,
+            f"{len(irrevocable)} irrevocable settlement(s), no unilateral clawback",
+        )
+    ]
+
+
+def validate_tvist_escrow_conditions(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """Escrow funds are released only when the release condition is satisfied.
+
+    Reads ``tvist:release:<eid>:<condition_met>:<released>``: a ``released=1`` with
+    ``condition_met=0`` means a payee drained an escrow it never delivered
+    against. ``payments: tvist`` PASSES (release refuses an unsatisfied
+    condition); a plugin with no escrow that pays out immediately FAILS.
+
+    Example::
+
+        results = validate_tvist_escrow_conditions(events)
+    """
+    releases = _tvist_lines(events, "release")
+    if not releases:
+        return [
+            ValidationResult(
+                "tvist_escrow_conditions",
+                False,
+                "no escrow release was exercised",
+            )
+        ]
+    violations: list[str] = []
+    for parts in releases:
+        if len(parts) < 5:
+            continue
+        eid, condition_met, released = parts[2], parts[3], parts[4]
+        if released == "1" and condition_met != "1":
+            violations.append(f"{eid}: released with unsatisfied condition")
+    if violations:
+        return [ValidationResult("tvist_escrow_conditions", False, "; ".join(violations))]
+    return [
+        ValidationResult(
+            "tvist_escrow_conditions",
+            True,
+            f"{len(releases)} release attempt(s), none bypassed its condition",
+        )
+    ]
+
+
+def validate_tvist_region_agreed(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """Every transaction that settled did so under a mutually-agreed region.
+
+    Reads ``tvist:region`` (the negotiated outcome + both option lists) and
+    ``tvist:settle`` lines. The protocol holds iff at least one flow reached
+    agreement and **every** settled flow names an ``agreed`` region that lies in
+    the intersection of the client's and agent's option lists. A settlement with
+    ``agreed=none`` (or a region neither side offered) is a transaction that
+    proceeded without a governing regime — the violation.
+
+    ``payments: tvist`` PASSES (it negotiates a region before settling, and skips
+    the no-overlap flow); ``payments: prepaid_credits`` FAILS (no negotiation, so
+    it settles every flow ungoverned).
+
+    Example::
+
+        results = validate_tvist_region_agreed(events)
+    """
+    agreed: dict[str, tuple[str, set[str]]] = {}
+    for parts in _tvist_lines(events, "region"):
+        # tvist:region:<flow>:<agreed>:<client_opts>:<agent_opts>
+        if len(parts) < 6:
+            continue
+        flow, agreed_region = parts[2], parts[3]
+        client = set(parts[4].split("|")) if parts[4] else set[str]()
+        agent = set(parts[5].split("|")) if parts[5] else set[str]()
+        agreed[flow] = (agreed_region, client & agent)
+
+    settled = {parts[2] for parts in _tvist_lines(events, "settle") if len(parts) >= 3}
+    if not settled:
+        return [ValidationResult("tvist_region_agreed", False, "no settlement was exercised")]
+
+    violations: list[str] = []
+    for flow in sorted(settled):
+        info = agreed.get(flow)
+        if info is None:
+            violations.append(f"{flow}: settled with no region negotiation")
+            continue
+        agreed_region, overlap = info
+        if agreed_region == "none" or agreed_region not in overlap:
+            violations.append(f"{flow}: settled under ungoverned region {agreed_region!r}")
+
+    if violations:
+        return [ValidationResult("tvist_region_agreed", False, "; ".join(violations))]
+    return [
+        ValidationResult(
+            "tvist_region_agreed",
+            True,
+            f"{len(settled)} settlement(s), each under a mutually-agreed region",
+        )
+    ]
+
+
+def _nash_optimal_region(client_opts: list[str], agent_opts: list[str]) -> str | None:
+    """Recompute the Nash-bargaining optimal region from two ordered option lists.
+
+    Mirrors ``TvistPayments.recommend_region`` independently (ordinal utilities,
+    maximise the Nash product, then maximin, then welfare, then the smallest id),
+    so the validator can judge *any* plugin's region choice against the
+    game-theoretic optimum without trusting the plugin to mark its own homework.
+
+    Example::
+
+        assert _nash_optimal_region(["eu_sepa", "br_pix"], ["br_pix", "eu_sepa"]) == "br_pix"
+    """
+    uc = {r: len(client_opts) - i for i, r in enumerate(client_opts)}
+    ua = {r: len(agent_opts) - i for i, r in enumerate(agent_opts)}
+    feasible = [r for r in uc if r in ua]
+    if not feasible:
+        return None
+    return min(
+        feasible,
+        key=lambda r: (-(uc[r] * ua[r]), -min(uc[r], ua[r]), -(uc[r] + ua[r]), r),
+    )
+
+
+def validate_tvist_region_optimal(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """The agreed region is the game-theoretically optimal one for both parties.
+
+    For every ``tvist:region`` line, recomputes the Nash-bargaining optimum from
+    the two emitted option lists and asserts the ``agreed`` region matches it (and
+    that a no-overlap flow agreed nothing). A plugin that picks a merely-feasible
+    region — or, like ``prepaid_credits``, picks nothing and settles anyway — does
+    not match the optimum and FAILS.
+
+    Example::
+
+        results = validate_tvist_region_optimal(events)
+    """
+    lines = _tvist_lines(events, "region")
+    if not lines:
+        return [ValidationResult("tvist_region_optimal", False, "no region negotiation emitted")]
+    mismatches: list[str] = []
+    checked = 0
+    for parts in lines:
+        # tvist:region:<flow>:<agreed>:<client_opts>:<agent_opts>
+        if len(parts) < 6:
+            continue
+        flow, agreed = parts[2], parts[3]
+        client = parts[4].split("|") if parts[4] else []
+        agent = parts[5].split("|") if parts[5] else []
+        optimal = _nash_optimal_region(client, agent)
+        expected = optimal if optimal is not None else "none"
+        checked += 1
+        if agreed != expected:
+            mismatches.append(f"{flow}: agreed {agreed!r} but Nash-optimal is {expected!r}")
+    if mismatches:
+        return [ValidationResult("tvist_region_optimal", False, "; ".join(mismatches))]
+    return [
+        ValidationResult(
+            "tvist_region_optimal",
+            True,
+            f"{checked} negotiation(s), each settled on the Nash-optimal region",
+        )
+    ]
+
+
+def validate_tvist_region_adherence(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """Recalls and disputes adhere to the regime of their agreed region.
+
+    Two regime rules, read off the trace (the region facts are emitted from the
+    canonical region registry, so the check is plugin-independent):
+
+    * a recall in a region whose regime disallows it (``recall_allowed=0``, e.g.
+      FedNow) must **not** reverse — escrow is the only protection there, and
+    * a dispute whose reason code is outside the agreed region's taxonomy
+      (``in_taxonomy=0``) must **not** be accepted.
+
+    ``payments: tvist`` PASSES (the regime gates both); ``payments:
+    prepaid_credits`` FAILS (``refund`` reverses the FedNow recall and the
+    region-blind ledger accepts the off-taxonomy reason).
+
+    Example::
+
+        results = validate_tvist_region_adherence(events)
+    """
+    recalls = _tvist_lines(events, "recall")
+    reasons = _tvist_lines(events, "reason")
+    if not recalls and not reasons:
+        return [
+            ValidationResult("tvist_region_adherence", False, "no recall or dispute was exercised")
+        ]
+
+    violations: list[str] = []
+    for parts in recalls:
+        # tvist:recall:<flow>:<region>:<recall_allowed>:<intent_valid>:<reversed>
+        if len(parts) < 7:
+            continue
+        flow, region, recall_allowed, reversed_ = parts[2], parts[3], parts[4], parts[6]
+        if recall_allowed == "0" and reversed_ == "1":
+            violations.append(f"{flow}: recall reversed in no-recall region {region!r}")
+    for parts in reasons:
+        # tvist:reason:<flow>:<region>:<reason>:<in_taxonomy>:<accepted>
+        if len(parts) < 7:
+            continue
+        flow, region, reason, in_taxonomy, accepted = (
+            parts[2],
+            parts[3],
+            parts[4],
+            parts[5],
+            parts[6],
+        )
+        if in_taxonomy == "0" and accepted == "1":
+            violations.append(f"{flow}: reason {reason!r} accepted outside region {region!r}")
+
+    if violations:
+        return [ValidationResult("tvist_region_adherence", False, "; ".join(violations))]
+    return [
+        ValidationResult(
+            "tvist_region_adherence",
+            True,
+            f"{len(recalls)} recall(s) and {len(reasons)} dispute(s) adhered to their regimes",
+        )
+    ]
+
+
+def validate_tvist_digidoot_consent(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """Every DigiDoot citizen transaction is India-governed and consent-bound.
+
+    The DigiDoot trust foundation in two invariants, read off the trace:
+
+    * **India regime.** Every settled flow agreed the ``in_upi`` region — the
+      citizen's jurisdiction was fixed up front, not left ungoverned.
+    * **Explicit consent.** No agent payment settled outside the citizen's consent
+      mandate (a ``tvist:mandate`` line with ``settled=1`` must have
+      ``within_consent=1``).
+
+    ``payments: tvist`` PASSES; ``payments: prepaid_credits`` FAILS (it cannot
+    negotiate the regime — every flow is ungoverned — and it pays beyond consent).
+
+    Example::
+
+        results = validate_tvist_digidoot_consent(events)
+    """
+    region_of: dict[str, str] = {}
+    for parts in _tvist_lines(events, "region"):
+        if len(parts) >= 4:
+            region_of[parts[2]] = parts[3]
+    settled = {parts[2] for parts in _tvist_lines(events, "settle") if len(parts) >= 3}
+    if not settled:
+        return [
+            ValidationResult(
+                "tvist_digidoot_consent", False, "no citizen transaction was exercised"
+            )
+        ]
+
+    problems: list[str] = []
+    for flow in sorted(settled):
+        if region_of.get(flow) != "in_upi":
+            problems.append(f"{flow}: settled outside the India/UPI regime ({region_of.get(flow)})")
+    for parts in _tvist_lines(events, "mandate"):
+        # tvist:mandate:<flow>:<agent>:<within_consent>:<settled>
+        if len(parts) >= 6 and parts[5] == "1" and parts[4] != "1":
+            problems.append(f"{parts[2]}: agent paid beyond the citizen's explicit consent")
+
+    if problems:
+        return [ValidationResult("tvist_digidoot_consent", False, "; ".join(problems))]
+    return [
+        ValidationResult(
+            "tvist_digidoot_consent",
+            True,
+            f"{len(settled)} citizen transaction(s), all India-governed and consent-bound",
+        )
+    ]
+
+
+def validate_tvist_mandate(
+    events: list[dict[str, Any]],
+) -> list[ValidationResult]:
+    """An agent-initiated payment settles only within its stored mandate.
+
+    Reads ``tvist:mandate:<txn>:<agent>:<within_mandate>:<settled>``: a
+    ``settled=1`` with ``within_mandate=0`` is an over-mandate payment that the
+    intent vault should have blocked. ``payments: tvist`` PASSES (settle refuses
+    an over-budget / off-allowlist payment); a mandate-blind plugin FAILS.
+
+    Example::
+
+        results = validate_tvist_mandate(events)
+    """
+    lines = _tvist_lines(events, "mandate")
+    if not lines:
+        return [ValidationResult("tvist_mandate", False, "no agent-mandate check was exercised")]
+    violations: list[str] = []
+    for parts in lines:
+        # tvist:mandate:<txn>:<agent>:<within_mandate>:<settled>
+        if len(parts) < 6:
+            continue
+        txn, agent, within, settled = parts[2], parts[3], parts[4], parts[5]
+        if settled == "1" and within != "1":
+            violations.append(f"{txn}: agent {agent} settled outside its mandate")
+    if violations:
+        return [ValidationResult("tvist_mandate", False, "; ".join(violations))]
+    return [
+        ValidationResult(
+            "tvist_mandate",
+            True,
+            f"{len(lines)} agent payment(s) checked, none exceeded mandate",
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Validator registry
 # ---------------------------------------------------------------------------
 
@@ -3818,5 +4359,28 @@ VALIDATORS: dict[str, list[Any]] = {
         validate_escrow_role_binding,
         validate_escrow_bps_in_range,
         validate_escrow_no_payout_without_delivery,
+    ],
+    "tvist_disputes": [
+        validate_tvist_evidence_gated,
+        validate_tvist_no_blind_refund,
+        validate_tvist_conservation,
+    ],
+    "tvist_escrow": [
+        validate_tvist_irrevocability,
+        validate_tvist_escrow_conditions,
+        validate_tvist_mandate,
+        validate_tvist_conservation,
+    ],
+    "tvist_region": [
+        validate_tvist_region_agreed,
+        validate_tvist_region_optimal,
+        validate_tvist_region_adherence,
+        validate_tvist_conservation,
+    ],
+    "tvist_digidoot": [
+        validate_tvist_digidoot_consent,
+        validate_tvist_mandate,
+        validate_tvist_escrow_conditions,
+        validate_tvist_conservation,
     ],
 }

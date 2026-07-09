@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tvist API — escrow, consent &amp; dispute for AI agents</title>
+<meta name="description" content="Tvist API: an HTTP service for AI agents that send payments. It agrees a dispute jurisdiction, enforces the principal's spending consent, holds funds in escrow until delivery, allows recall only on proof of consent breach, and validates dispute reason codes with legal citations. The same URL serves HTML to browsers and JSON to agents.">
+<style>
+:root{
+  --bg:#0b1020; --bg2:#101736; --card:#151d3f; --line:#26305e;
+  --teal:#2dd4bf; --teal-d:#0f766e; --indigo:#818cf8; --coral:#fb7185;
+  --amber:#fbbf24; --green:#4ade80; --red:#f87171;
+  --txt:#e6eaf6; --mut:#93a0c4; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+button{font:inherit;cursor:pointer}
+.wrap{max-width:1060px;margin:0 auto;padding:0 22px}
+nav{position:sticky;top:0;z-index:50;background:rgba(11,16,32,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:18px;height:56px}
+nav .logo{font-weight:700;font-size:18px;color:var(--txt)}
+nav .logo:hover{text-decoration:none;filter:brightness(1.2)}
+nav .logo b{color:var(--teal)}
+nav .menu{display:flex;align-items:center;gap:18px}
+nav a.item{color:var(--mut);font-size:14px;padding:4px 2px;border-bottom:2px solid transparent}
+nav a.item:hover{color:var(--txt);text-decoration:none}
+nav a.item.active{color:var(--teal);border-bottom-color:var(--teal)}
+nav .cta{margin-left:auto;background:var(--teal);color:#04241f;padding:7px 14px;border-radius:8px;font-weight:600;font-size:14px;white-space:nowrap}
+nav .cta:hover{text-decoration:none;filter:brightness(1.1)}
+.burger{display:none;background:none;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:5px 11px;font-size:18px;line-height:1}
+@media (max-width: 960px){
+  .burger{display:block}
+  nav .menu{position:fixed;top:56px;left:0;right:0;background:rgba(11,16,32,.97);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);display:none;flex-direction:column;align-items:stretch;gap:0;padding:6px 22px 14px}
+  nav .menu.open{display:flex}
+  nav .menu a.item{padding:13px 2px;border-bottom:1px solid var(--line);font-size:15px}
+  nav .menu a.item.active{border-bottom-color:var(--teal)}
+}
+section{padding:72px 0;border-bottom:1px solid var(--line);scroll-margin-top:66px}
+.totop{position:fixed;right:18px;bottom:18px;width:44px;height:44px;border-radius:50%;background:var(--teal);color:#04241f;border:none;font-size:19px;font-weight:800;opacity:0;pointer-events:none;transition:.25s;z-index:60;box-shadow:0 4px 18px rgba(0,0,0,.4)}
+.totop.show{opacity:1;pointer-events:auto}
+.totop:hover{filter:brightness(1.12)}
+footer .fcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:26px}
+footer h3{color:var(--txt);font-size:14px;margin-bottom:10px;letter-spacing:.06em;text-transform:uppercase}
+footer a.f{display:block;color:var(--mut);padding:4px 0;font-size:13.5px}
+footer a.f:hover{color:var(--teal);text-decoration:none}
+footer .legal{margin-top:28px;border-top:1px solid var(--line);padding-top:18px}
+h1{font-size:42px;line-height:1.15;font-weight:800}
+h1 .grad{background:linear-gradient(90deg,var(--teal),var(--indigo));-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:28px;font-weight:700;margin-bottom:8px}
+h3{font-size:17px;font-weight:600}
+.kicker{color:var(--teal);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px;margin-bottom:10px}
+.sub{color:var(--mut);max-width:760px}
+.grid{display:grid;gap:16px;margin-top:28px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.card p{color:var(--mut);font-size:14px;margin-top:6px}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;padding:2px 9px;border-radius:99px;margin-bottom:10px}
+.tag.t{background:rgba(45,212,191,.14);color:var(--teal)}
+.tag.i{background:rgba(129,140,248,.14);color:var(--indigo)}
+.tag.c{background:rgba(251,113,133,.14);color:var(--coral)}
+.tag.a{background:rgba(251,191,36,.14);color:var(--amber)}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:34px}
+.metric{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center;position:relative;overflow:hidden}
+.metric .n{font-size:34px;font-weight:800;color:var(--teal)}
+.metric .l{font-size:12.5px;color:var(--mut)}
+.metric::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:100%;background:linear-gradient(90deg,var(--teal),var(--indigo));transform:scaleX(0);transform-origin:left;transition:transform 1.4s ease}
+.metric.seen::after{transform:scaleX(1)}
+pre{background:#0a0f22;border:1px solid var(--line);border-radius:12px;padding:16px;font-family:var(--mono);font-size:12.5px;line-height:1.6;overflow-x:auto;color:#c7d2ee}
+pre .c{color:#5b6b96} pre .g{color:var(--green)} pre .r{color:var(--red)} pre .y{color:var(--amber)}
+code{font-family:var(--mono);font-size:13px;background:var(--bg2);border:1px solid var(--line);padding:1px 6px;border-radius:6px}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);color:var(--txt);padding:11px 18px;border-radius:10px;font-weight:600;font-size:14.5px;transition:.2s}
+.btn:hover{border-color:var(--teal);text-decoration:none;transform:translateY(-1px)}
+.btn.solid{background:var(--teal);color:#04241f;border-color:var(--teal)}
+.btn.mini{padding:6px 12px;font-size:12.5px;border-radius:8px}
+.btnrow{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}
+.card .btnrow{margin-top:14px}
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
+.reveal.seen{opacity:1;transform:none}
+table{width:100%;border-collapse:collapse;margin-top:20px;font-size:14px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+td code{white-space:nowrap}
+.ok{color:var(--green);font-weight:700} .no{color:var(--red);font-weight:700}
+footer{padding:40px 0;color:var(--mut);font-size:13.5px}
+.pill{display:inline-flex;align-items:center;gap:7px;background:var(--bg2);border:1px solid var(--line);border-radius:99px;padding:6px 14px;font-size:13px;color:var(--mut);margin-bottom:22px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--amber);animation:pulse 1.6s infinite}
+.dot.up{background:var(--green)} .dot.down{background:var(--red)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(74,222,128,.5)}50%{box-shadow:0 0 0 6px rgba(74,222,128,0)}}
+input,select{background:#0a0f22;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 12px;font:14px var(--mono);width:100%}
+label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
+.result{font-family:var(--mono);font-size:13px;margin-top:10px;min-height:20px}
+.result.ok{color:var(--green)} .result.bad{color:var(--red)}
+.statbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:14px}
+.stat{background:#0a0f22;border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-align:center}
+.stat .v{font:700 20px var(--mono);color:var(--teal)}
+.stat .k{font-size:11px;color:var(--mut)}
+.stat.flash .v{animation:flash .8s}
+@keyframes flash{0%{color:var(--amber)}100%{color:var(--teal)}}
+/* SVG flow animation */
+.flowbox{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:30px;overflow-x:auto}
+.flow .lane{stroke:var(--line);stroke-width:1;stroke-dasharray:3 5}
+.flow .node{fill:var(--card);stroke:var(--line);stroke-width:1.2;rx:10}
+.flow .node.hot{stroke:var(--teal)}
+.flow .node.gate{stroke:var(--coral)}
+.flow g.clk{cursor:pointer}
+.flow g.clk:hover .node{stroke-width:2.5;filter:brightness(1.25)}
+.flow text{fill:var(--txt);font:600 12.5px -apple-system,Segoe UI,Roboto,sans-serif;pointer-events:none}
+.flow .small{fill:var(--mut);font-weight:400;font-size:10.5px}
+.flow .arrow{stroke:var(--teal);stroke-width:2;fill:none;marker-end:url(#ah);stroke-dasharray:6 6;animation:dash 1.1s linear infinite}
+.flow .arrow.block{stroke:var(--red);marker-end:url(#ahr)}
+.flow .arrow.slow{animation-duration:1.8s}
+@keyframes dash{to{stroke-dashoffset:-12}}
+.flow .spark{fill:var(--teal)}
+.flow .spark.red{fill:var(--red)}
+.flow .glabel{fill:var(--teal);font-size:10.5px;font-weight:700;letter-spacing:.08em}
+@media (prefers-reduced-motion: reduce){.flow .arrow{animation:none}.dot{animation:none}}
+/* jurisdiction globe + clauses + nash visualizer */
+#globe{touch-action:none;cursor:grab;display:block;max-width:420px;margin:0 auto}
+#globe:active{cursor:grabbing}
+.gsphere{fill:#0a0f22;stroke:var(--line);stroke-width:1.2}
+.gline{stroke:var(--line);fill:none;stroke-width:.7;opacity:.7}
+.gmark{fill:var(--teal);stroke:#04241f;stroke-width:1;cursor:pointer}
+.gmark:hover{fill:var(--indigo)}
+.gmark.sel{fill:var(--amber)}
+.gmark.nash{fill:var(--coral)}
+.glab{fill:var(--mut);font-size:8.5px;pointer-events:none}
+.gchip.on{border-color:var(--amber);color:var(--amber)}
+.clause{border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-top:8px;cursor:pointer;font-size:13px;transition:.15s}
+.clause:hover{border-color:var(--teal)}
+.clause.hl{background:rgba(251,191,36,.13);border-color:var(--amber)}
+.clause .basis{color:var(--mut);font-size:12px;margin-top:2px}
+.clause.hl .basis{color:var(--txt)}
+.modebtn.on{border-color:var(--teal);color:var(--teal)}
+</style>
+</head>
+<body>
+
+<span id="top"></span>
+<nav><div class="wrap">
+  <a class="logo" href="#top" title="Back to top">tvist<b>.ai</b></a>
+  <span class="tag a" style="margin:0">sandbox</span>
+  <div class="menu" id="menu">
+    <a class="item" href="#overview">Overview</a>
+    <a class="item" href="#pain">Pain points</a>
+    <a class="item" href="#spectrum">Spectrum</a>
+    <a class="item" href="#arch">Architecture</a>
+    <a class="item" href="#map">Map</a>
+    <a class="item" href="#components">Components</a>
+    <a class="item" href="#law">Legal</a>
+    <a class="item" href="#personas">Personas</a>
+    <a class="item" href="#usecases">Use cases</a>
+    <a class="item" href="#api">API</a>
+    <a class="item" href="#try">Try live</a>
+    <a class="item" href="#downloads">Downloads</a>
+  </div>
+  <a class="cta" href="#try" onclick="go(testApi)">Test the API</a>
+  <button class="burger" id="burger" onclick="toggleMenu()" aria-label="Open menu" aria-expanded="false" aria-controls="menu">☰</button>
+</div></nav>
+
+<!-- HERO -->
+<section>
+  <div class="wrap">
+    <span class="pill"><span class="dot" id="statusdot"></span> <span id="statustxt">checking service…</span> · no auth · notional credits · <b style="color:var(--teal)">dual-use: humans &amp; agents</b></span>
+    <h1><span class="grad">Consent, escrow, recall &amp; disputes</span><br>for payments made by AI agents.</h1>
+    <p class="sub" style="margin-top:18px;font-size:18px">
+      Tvist is one HTTP API. Before an agent pays, four checks run in a fixed order:
+      <b>1)</b> both parties agree the governing jurisdiction, <b>2)</b> the payment is checked
+      against the principal's recorded consent, <b>3)</b> funds are held in escrow until delivery
+      is proven, <b>4)</b> a settled payment can be recalled only where the jurisdiction allows it
+      and the consent was breached. Each check is one endpoint. Every button on this page sends a
+      real request to the live service.
+    </p>
+    <div class="btnrow">
+      <a class="btn solid" href="#try" onclick="go(testApi)">▶ Test the API live</a>
+      <a class="btn" href="/skill.md">⤓ SKILL.md — for agents</a>
+      <a class="btn" href="/docs">Interactive docs</a>
+      <a class="btn" href="/openapi.json">OpenAPI spec</a>
+    </div>
+
+    <div class="card" style="margin-top:30px">
+      <span class="tag i">Dual-use by design</span>
+      <h3>One URL. Two audiences. Same contract.</h3>
+      <p style="color:var(--mut);font-size:14px;margin-top:6px">
+        This site is served by the API itself via content negotiation on <code>GET /</code>:
+        a <b>browser</b> (Accept: text/html) gets this page; an <b>agent or curl</b>
+        (Accept: */*) gets the JSON endpoint index. Humans use the widgets below; agents read
+        <a href="/skill.md">SKILL.md</a> and <a href="/openapi.json">OpenAPI</a> and call the
+        same endpoints. Every button on this page sends a real HTTP request to this service;
+        every number is read from <code>GET /stats</code> or <code>GET /openapi.json</code>.
+      </p>
+      <div class="grid g2" style="margin-top:14px">
+        <pre style="margin:0"><span class="c"># humans (browser)</span>
+open <span class="g origin">this URL</span> → animated homepage + live playground</pre>
+        <pre style="margin:0"><span class="c"># agents (same URL)</span>
+curl -s <span class="g origin">this URL</span>/          <span class="c"># JSON endpoint index</span>
+curl -s <span class="g origin">this URL</span>/skill.md  <span class="c"># the full agent contract</span></pre>
+      </div>
+    </div>
+
+    <div class="metrics" title="hydrated live from GET /stats and GET /openapi.json">
+      <div class="metric"><div class="n" id="m-regions" data-count="22">0</div><div class="l">jurisdictions · live from <code>/stats</code></div></div>
+      <div class="metric"><div class="n" id="m-endpoints" data-count="33">0</div><div class="l">endpoints · live from <code>/openapi.json</code></div></div>
+      <div class="metric"><div class="n" data-count="4">0</div><div class="l">protection gates</div></div>
+      <div class="metric"><div class="n" id="m-accounts" data-count="0">0</div><div class="l">accounts · live from <code>/stats</code></div></div>
+      <div class="metric"><div class="n" id="m-settlements" data-count="0">0</div><div class="l">settlements · live from <code>/stats</code></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- OVERVIEW — EXECUTIVE SUMMARY TEASER -->
+<section id="overview">
+  <div class="wrap reveal">
+    <div class="kicker">Executive summary — the one-minute version</div>
+    <h2>Problem, market scope, solution</h2>
+    <div class="grid g3" style="margin-top:20px">
+      <div class="card"><span class="tag c">1 · The problem</span>
+        <h3>Agents pay on rails that cannot be reversed</h3>
+        <p>AI agents now spend money on people's behalf: about 1 in 6 Black Friday 2025 purchases
+        were AI-assisted, and generative-AI retail traffic grew 4,700% year over year (Adobe
+        Analytics). Juniper Research (2026) names trust the #1 adoption barrier for agentic
+        commerce. The rails agents pay on — Pix, SEPA Instant, FedNow, UPI — settle in seconds
+        and are final; the ECB puts fraud risk on instant payments at "up to 10× higher".
+        Disputes were already expensive on cards: 106M disputes at Visa in 2025, 40–80% of
+        e-commerce disputes classed as friendly fraud, and roughly $28B/yr in merchant chargeback
+        losses (industry figures, compiled with sources in the executive summary below).</p></div>
+      <div class="card"><span class="tag a">2 · The market scope</span>
+        <h3>Existing products each cover one part</h3>
+        <p>Visa, Mastercard, and Amex dispute products work on card rails only. Agent-payment
+        protocols (Google AP2, OpenAI ACP, OKX APP, Coinbase x402) execute checkout but ship no
+        dispute layer. Chargeback SaaS automates card representment only. Custody providers hold
+        funds but offer no programmable, delivery-gated escrow. No product covers disputes and
+        escrow across instant account-to-account rails — that gap is Tvist's scope.</p></div>
+      <div class="card"><span class="tag t">3 · The solution</span>
+        <h3>Four checks around every agent payment</h3>
+        <p>Tvist runs four checks in a fixed order: jurisdiction agreed by Nash bargaining over
+        22 real regimes, consent enforced before settlement, escrow released only on delivery
+        proof, and recall only where the regime allows it and the mandate was breached — plus
+        law-cited disputes, an x402 pay-per-request rail, and machine-to-machine delegation.
+        Implemented in this sandbox: 33 endpoints, 22 jurisdictions, 7 legal categories,
+        and a passing test suite (<code>pytest -q</code>).</p></div>
+    </div>
+    <div class="btnrow">
+      <a class="btn" href="/download/brief-pdf">⤓ Executive brief — 1-page PDF</a>
+      <a class="btn" href="/download/summary-pdf">⤓ Executive summary — PDF</a>
+      <a class="btn" href="/download/summary-docx">⤓ Full summary — DOCX</a>
+      <a class="btn solid" href="#map">Jurisdiction map ↓</a>
+    </div>
+    <p class="sub" style="margin-top:14px;font-size:12.5px">Market figures above come from the
+    named public sources; the full source list is in the executive summary documents. Service
+    figures (endpoints, jurisdictions, legal categories, tests) are measurable here:
+    <a href="/openapi.json">GET /openapi.json</a>, <a href="/regions">GET /regions</a>,
+    <a href="/taxonomy">GET /taxonomy</a>, <code>pytest -q</code> in <code>tvist-service/</code>.</p>
+  </div>
+</section>
+
+<!-- PAIN POINTS -->
+<section id="pain">
+  <div class="wrap reveal">
+    <div class="kicker">Why this exists</div>
+    <h2>Five failure cases, and the check that stops each one</h2>
+    <p class="sub">These are the failure cases when an AI agent pays over instant payment rails.
+    Each card names the failure and the Tvist check that refuses it. The <b>Run it</b> button
+    sends the failing request to this API and prints the refusal in the console (section
+    <a href="#try">Try live</a>).</p>
+    <div class="grid g2">
+      <div class="card"><span class="tag c">Case 1 · Irrevocability</span>
+        <h3>Instant payments cannot be reversed by the sender</h3>
+        <p>Pix, SEPA Instant, FedNow, and UPI settle in seconds and are final. If an agent pays
+        the wrong party, the money is not recoverable afterwards.
+        <b>Check:</b> <code>POST /recall</code> reverses a payment only where the region's rules
+        allow recall and the payment breached the recorded consent.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkFednow)">▶ Run it — FedNow recall is refused</button></div></div>
+      <div class="card"><span class="tag c">Case 2 · No consent record</span>
+        <h3>No stored record of what the human authorised</h3>
+        <p>Without a stored mandate (budget, allowed merchants) there is no basis to refuse an
+        out-of-scope payment before it settles, and no basis to recall it after.
+        <b>Check:</b> <code>POST /consent</code> stores the mandate; <code>POST /pay</code>
+        refuses any payment outside it with <code>403</code>, before funds move.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkConsent)">▶ Run it — payment over consent returns 403</button></div></div>
+      <div class="card"><span class="tag c">Case 3 · Rule differences per rail</span>
+        <h3>Each rail has different dispute rules</h3>
+        <p>Pix MED allows a recovery request for 11 days. SEPA has the SCT Inst recall procedure.
+        FedNow has no recall procedure. Reason codes are not portable between rails.
+        <b>Check:</b> <code>GET /regions</code> lists all 22 regimes; <code>POST /dispute</code>
+        accepts a reason code only if it is valid in the agreed region.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkReason)">▶ Run it — Pix code rejected under UPI</button></div></div>
+      <div class="card"><span class="tag c">Case 4 · Prepayment risk</span>
+        <h3>Paying before delivery on a final rail</h3>
+        <p>An agent that prepays on an irrevocable rail has no remedy if the goods or service
+        never arrive.
+        <b>Check:</b> <code>POST /escrow</code> holds the funds;
+        <code>POST /escrow/{id}/release</code> pays the payee only after the posted delivery
+        proof equals the agreed condition.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkEscrow)">▶ Run it — release before delivery returns 403</button></div></div>
+      <div class="card"><span class="tag c">Case 5 · Machine-to-machine authority</span>
+        <h3>Delegation and agent-to-agent trade are unenforced</h3>
+        <p>When an agent delegates spending to sub-agents, nothing enforces that a sub-agent stays
+        within its delegator's budget. Two agents that have never interacted share no agreed
+        jurisdiction.
+        <b>Check:</b> <code>POST /m2m/delegate</code> refuses a delegation larger than its
+        parent's budget; <code>POST /m2m/handshake</code> refuses a trade when no shared region
+        exists.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(atkM2M)">▶ Run it — over-delegation and no-region pact refused</button></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST SPECTRUM -->
+<section id="spectrum">
+  <div class="wrap reveal">
+    <div class="kicker">The trust spectrum · live from GET /spectrum</div>
+    <h2>Four payment relationships. The same four checks.</h2>
+    <p class="sub">The API covers four payment relationships: human→agent, agent→sub-agent,
+    agent↔agent, and agent→paid resource. Each one passes the same four checks — region,
+    consent, escrow, resolution — before funds move. <b>Click a lane</b> to send that
+    relationship's requests to the API and see the responses in the console. Agents can read
+    the same structure as data at <a href="/spectrum">GET /spectrum</a> (JSON, ASCII, and
+    Mermaid).</p>
+
+    <div class="flowbox">
+    <svg class="flow" viewBox="0 0 1000 452" width="100%" role="img" aria-label="Four trust relationships — human to agent, agent to sub-agent, agent to agent, agent to resource — all converge through the Tvist gate stack onto 22 rails. Every lane is clickable and runs live.">
+      <g class="clk" onclick="go(demoConsentPair)">
+        <rect class="node" x="20" y="36" width="125" height="52" rx="10"/>
+        <text x="34" y="58">🧑 HUMAN</text><text class="small" x="34" y="76">the principal</text>
+        <rect class="node hot" x="195" y="36" width="135" height="52" rx="10"/>
+        <text x="209" y="58">🤖 AGENT</text><text class="small" x="209" y="76">spends on their behalf</text>
+        <path class="arrow" d="M145 62 H 191"/>
+        <text class="small" x="20" y="106">consent · POST /consent → /pay ▶</text>
+      </g>
+      <g class="clk" onclick="go(demoDelegate)">
+        <rect class="node" x="20" y="146" width="125" height="52" rx="10"/>
+        <text x="34" y="168">🤖 ORCHESTR.</text><text class="small" x="34" y="186">machine principal</text>
+        <rect class="node hot" x="195" y="146" width="135" height="52" rx="10"/>
+        <text x="209" y="168">🤖 SUB-AGENT</text><text class="small" x="209" y="186">attenuated budget</text>
+        <path class="arrow" d="M145 172 H 191"/>
+        <text class="small" x="20" y="216">delegation · POST /m2m/delegate ▶</text>
+      </g>
+      <g class="clk" onclick="go(demoHandshake)">
+        <rect class="node hot" x="20" y="256" width="125" height="52" rx="10"/>
+        <text x="34" y="278">🤖 AGENT A</text><text class="small" x="34" y="296">buyer, never met B</text>
+        <rect class="node hot" x="195" y="256" width="135" height="52" rx="10"/>
+        <text x="209" y="278">🤖 AGENT B</text><text class="small" x="209" y="296">seller, never met A</text>
+        <path class="arrow" d="M145 282 H 191"/>
+        <path class="arrow" d="M191 292 H 145" transform="translate(0,0)"/>
+        <text class="small" x="20" y="326">pact · POST /m2m/handshake ▶</text>
+      </g>
+      <g class="clk" onclick="go(demoX402)">
+        <rect class="node hot" x="20" y="366" width="125" height="52" rx="10"/>
+        <text x="34" y="388">🤖 AGENT</text><text class="small" x="34" y="406">pays per call</text>
+        <rect class="node" x="195" y="366" width="135" height="52" rx="10"/>
+        <text x="209" y="388">🌐 RESOURCE</text><text class="small" x="209" y="406">paid API / dataset</text>
+        <path class="arrow" d="M145 392 H 191"/>
+        <text class="small" x="20" y="436">x402 · 402 → X-PAYMENT ▶</text>
+      </g>
+
+      <!-- converging lanes into the gate stack -->
+      <path class="arrow slow" d="M334 62 C 450 62, 480 140, 552 160"/>
+      <path class="arrow slow" d="M334 172 C 440 172, 470 200, 552 210"/>
+      <path class="arrow slow" d="M334 282 C 440 282, 470 268, 552 260"/>
+      <path class="arrow slow" d="M334 392 C 450 392, 480 330, 552 310"/>
+      <circle class="spark" r="4"><animateMotion dur="2.4s" repeatCount="indefinite" path="M334 62 C 450 62, 480 140, 552 160"/></circle>
+      <circle class="spark" r="4"><animateMotion dur="2.4s" begin="0.6s" repeatCount="indefinite" path="M334 172 C 440 172, 470 200, 552 210"/></circle>
+      <circle class="spark" r="4"><animateMotion dur="2.4s" begin="1.2s" repeatCount="indefinite" path="M334 282 C 440 282, 470 268, 552 260"/></circle>
+      <circle class="spark" r="4"><animateMotion dur="2.4s" begin="1.8s" repeatCount="indefinite" path="M334 392 C 450 392, 480 330, 552 310"/></circle>
+
+      <!-- the one gate stack -->
+      <rect class="node" x="556" y="84" width="234" height="44" rx="10" style="stroke:#2dd4bf;stroke-width:2"/>
+      <text x="572" y="111">TVIST — ONE GATE LOGIC</text>
+      <g class="clk" onclick="go(stepRecommend)"><rect class="node gate" x="556" y="140" width="234" height="42" rx="8"/>
+        <text x="570" y="160">1 · Region ▶</text><text class="small" x="570" y="175">Nash-optimal, agreed first</text></g>
+      <g class="clk" onclick="go(demoConsentPair)"><rect class="node gate" x="556" y="190" width="234" height="42" rx="8"/>
+        <text x="570" y="210">2 · Consent ▶</text><text class="small" x="570" y="225">mandate / delegation checked</text></g>
+      <g class="clk" onclick="go(demoEscrowLifecycle)"><rect class="node gate" x="556" y="240" width="234" height="42" rx="8"/>
+        <text x="570" y="260">3 · Escrow ▶</text><text class="small" x="570" y="275">release only on proof</text></g>
+      <g class="clk" onclick="go(demoBreachRecall)"><rect class="node gate" x="556" y="290" width="234" height="42" rx="8"/>
+        <text x="570" y="310">4 · Resolution ▶</text><text class="small" x="570" y="325">regime recall · law-cited disputes</text></g>
+
+      <!-- out to rails -->
+      <path class="arrow" d="M790 235 H 838"/>
+      <rect class="node" x="842" y="190" width="140" height="92" rx="10"/>
+      <text x="856" y="216">22 RAILS</text>
+      <text class="small" x="856" y="236">Pix · SEPA · FedNow</text>
+      <text class="small" x="856" y="252">UPI · FPS · NPP</text>
+      <text class="small" x="856" y="268">M-Pesa · x402 …</text>
+    </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE + ANIMATED FLOW -->
+<section id="arch">
+  <div class="wrap reveal">
+    <div class="kicker">Architecture</div>
+    <h2>One transaction, five steps — click any node to run it</h2>
+    <p class="sub">Every payment follows the same sequence: negotiate region → record consent →
+    open escrow → deliver proof → release. Green arrows show the sequence when every check
+    passes. Red arrows show requests that a check refuses. <b>Every node is clickable</b> — it
+    sends the corresponding requests to the API and prints the responses in the console.</p>
+
+    <div class="flowbox">
+    <svg class="flow" viewBox="0 0 1000 470" width="100%" role="img" aria-label="Tvist transaction pipeline: negotiate region, check consent, escrow, deliver, release; attacks are blocked at each gate. All nodes clickable — they run live API calls.">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2dd4bf"/></marker>
+        <marker id="ahr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f87171"/></marker>
+      </defs>
+
+      <line class="lane" x1="20" y1="95" x2="980" y2="95"/>
+      <line class="lane" x1="20" y1="330" x2="980" y2="330"/>
+      <text class="glabel" x="24" y="30">HAPPY PATH — click a stage to run it live</text>
+      <text class="glabel" x="24" y="360" style="fill:#f87171">ATTACKS — click one to watch the gate refuse it</text>
+
+      <!-- happy path nodes (clickable) -->
+      <g class="clk" onclick="go(stepRecommend)">
+        <rect class="node hot" x="24"  y="55" width="150" height="78" rx="10"/>
+        <text x="40" y="84">1 · Negotiate ▶</text><text class="small" x="40" y="102">POST /regions/recommend</text>
+        <text class="small" x="40" y="118">Nash-optimal region</text></g>
+      <g class="clk" onclick="go(stepConsent)">
+        <rect class="node hot" x="232" y="55" width="150" height="78" rx="10"/>
+        <text x="248" y="84">2 · Consent ▶</text><text class="small" x="248" y="102">POST /consent</text>
+        <text class="small" x="248" y="118">budget + allowlist</text></g>
+      <g class="clk" onclick="go(stepEscrow)">
+        <rect class="node hot" x="440" y="55" width="150" height="78" rx="10"/>
+        <text x="456" y="84">3 · Escrow ▶</text><text class="small" x="456" y="102">POST /escrow</text>
+        <text class="small" x="456" y="118">funds held, not paid</text></g>
+      <g class="clk" onclick="go(stepDeliver)">
+        <rect class="node hot" x="648" y="55" width="150" height="78" rx="10"/>
+        <text x="664" y="84">4 · Deliver ▶</text><text class="small" x="664" y="102">POST /escrow/:id/deliver</text>
+        <text class="small" x="664" y="118">proof == condition</text></g>
+      <g class="clk" onclick="go(runFlow)">
+        <rect class="node hot" x="856" y="55" width="124" height="78" rx="10"/>
+        <text x="872" y="84">5 · Release ▶</text><text class="small" x="872" y="102">payee is paid</text>
+        <text class="small" x="872" y="118">✓ only after proof</text></g>
+
+      <path class="arrow" d="M174 94 H 228"/>
+      <path class="arrow" d="M382 94 H 436"/>
+      <path class="arrow" d="M590 94 H 644"/>
+      <path class="arrow" d="M798 94 H 852"/>
+      <circle class="spark" r="4"><animateMotion dur="5s" repeatCount="indefinite" path="M100 94 H930"/></circle>
+
+      <g>
+        <path class="arrow slow" d="M100 140 V 175"/><text class="small" x="60" y="196">22 regimes scored</text>
+        <path class="arrow slow" d="M308 140 V 175"/><text class="small" x="264" y="196">403 if over budget</text>
+        <path class="arrow slow" d="M516 140 V 175"/><text class="small" x="470" y="196">100% funds held</text>
+        <path class="arrow slow" d="M724 140 V 175"/><text class="small" x="676" y="196">tamper-proof match</text>
+        <path class="arrow slow" d="M918 140 V 175"/><text class="small" x="874" y="196">0 blind payouts</text>
+      </g>
+
+      <!-- gates row (clickable → their attack) -->
+      <g class="clk" onclick="go(atkNoOverlap)">
+        <rect class="node gate" x="128" y="215" width="168" height="66" rx="10"/>
+        <text x="144" y="242">Gate · Region ▶</text><text class="small" x="144" y="260">no overlap → no deal</text></g>
+      <g class="clk" onclick="go(atkConsent)">
+        <rect class="node gate" x="356" y="215" width="168" height="66" rx="10"/>
+        <text x="372" y="242">Gate · Mandate ▶</text><text class="small" x="372" y="260">outside consent → 403</text></g>
+      <g class="clk" onclick="go(atkEscrow)">
+        <rect class="node gate" x="584" y="215" width="168" height="66" rx="10"/>
+        <text x="600" y="242">Gate · Delivery ▶</text><text class="small" x="600" y="260">no proof → no release</text></g>
+      <g class="clk" onclick="go(atkClawback)">
+        <rect class="node gate" x="812" y="215" width="168" height="66" rx="10"/>
+        <text x="828" y="242">Gate · Recall ▶</text><text class="small" x="828" y="260">regime + breach only</text></g>
+
+      <!-- attack nodes (clickable) -->
+      <g class="clk" onclick="go(atkNoOverlap)">
+        <rect class="node" x="24" y="380" width="200" height="66" rx="10"/>
+        <text x="40" y="407">No-overlap parties ▶</text><text class="small" x="40" y="425">agreed_region: null</text></g>
+      <g class="clk" onclick="go(atkConsent)">
+        <rect class="node" x="272" y="380" width="200" height="66" rx="10"/>
+        <text x="288" y="407">Over-mandate charge ▶</text><text class="small" x="288" y="425">900 &gt; consent 500</text></g>
+      <g class="clk" onclick="go(atkEscrow)">
+        <rect class="node" x="520" y="380" width="200" height="66" rx="10"/>
+        <text x="536" y="407">Escrow drain attempt ▶</text><text class="small" x="536" y="425">release before delivery</text></g>
+      <g class="clk" onclick="go(atkClawback)">
+        <rect class="node" x="768" y="380" width="212" height="66" rx="10"/>
+        <text x="784" y="407">Unilateral clawback ▶</text><text class="small" x="784" y="425">recall w/o breach → refused</text></g>
+
+      <path class="arrow block" d="M124 378 C 140 330, 175 305, 200 285"/>
+      <path class="arrow block" d="M372 378 C 388 330, 415 305, 435 285"/>
+      <path class="arrow block" d="M620 378 C 636 330, 655 305, 665 285"/>
+      <path class="arrow block" d="M874 378 C 886 330, 894 310, 896 285"/>
+      <circle class="spark red" r="4"><animateMotion dur="2.4s" repeatCount="indefinite" path="M124 378 C 140 330, 175 305, 200 285"/></circle>
+      <circle class="spark red" r="4"><animateMotion dur="2.4s" begin="0.6s" repeatCount="indefinite" path="M620 378 C 636 330, 655 305, 665 285"/></circle>
+    </svg>
+    </div>
+
+    <!-- LIVE REGION EXPLORER -->
+    <div class="grid g2" style="margin-top:22px">
+      <div class="card">
+        <span class="tag t">Live · GET /regions</span>
+        <h3>🗺️ Region explorer</h3>
+        <p>The full jurisdiction registry, loaded from the API. Pick one to see its regime.</p>
+        <label for="regsel">Jurisdiction</label>
+        <select id="regsel" onchange="showRegion()"><option>loading from /regions…</option></select>
+        <div class="result" id="regout"></div>
+      </div>
+      <div class="card">
+        <span class="tag t">Live · POST /regions/recommend</span>
+        <h3>⚖️ Nash recommender</h3>
+        <p>Rank regions for each party (comma-separated, best first) and get the jointly-optimal pick.</p>
+        <label for="cprefs">Client preferences</label>
+        <input id="cprefs" value="eu_sepa, br_pix, in_upi">
+        <label for="aprefs">Agent preferences</label>
+        <input id="aprefs" value="in_upi, br_pix, eu_sepa">
+        <div class="btnrow"><button class="btn mini solid" onclick="uiRecommend()">Recommend</button></div>
+        <div class="result" id="recout"></div>
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin-top:22px">
+      <div class="card"><span class="tag t">Layer 1</span><h3>Region regimes</h3>
+        <p>22 real instant/A2A rails, each encoded with irrevocability, recall window and dispute
+        taxonomy. The Nash-bargaining recommender picks the <i>jointly</i> optimal jurisdiction.</p></div>
+      <div class="card"><span class="tag t">Layer 2</span><h3>Consent vault</h3>
+        <p>The principal's explicit mandate — budget and merchant allowlist — stored before the
+        agent moves a single credit, and enforced on every settle.</p></div>
+      <div class="card"><span class="tag t">Layer 3</span><h3>Value engine</h3>
+        <p>Ledger + escrow + recall. Conservation-checked: balances plus holds are invariant across
+        every pay / hold / release / recall sequence — watch <code>total_funds</code> in the live stats.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- JURISDICTION GLOBE + NASH VISUALIZER -->
+<section id="map">
+  <div class="wrap reveal">
+    <div class="kicker">Jurisdiction map · live from GET /regions/{region}/legal</div>
+    <h2>Pick a jurisdiction on the globe — its clauses load from the API</h2>
+    <p class="sub">Drag the globe to rotate it. Click a marker to select that jurisdiction: its
+    dispute regime and key legal clauses load live from
+    <code>GET /regions/{region}/legal</code>. Click a clause to highlight it. The two
+    non-geographic regimes are the chips under the globe. The <b>suggested start</b> chip comes
+    from <code>GET /regions/suggest</code> — derived from your browser timezone and locale; your
+    IP is echoed for transparency but not geolocated. Click it to select, click again to
+    clear.</p>
+
+    <div class="grid g2" style="margin-top:26px">
+      <div class="card">
+        <span class="tag t">Interactive · drag to rotate, click to select</span>
+        <h3>🌍 22 jurisdictions</h3>
+        <svg id="globe" viewBox="0 0 420 420" width="100%" role="img"
+             aria-label="Rotatable globe with one marker per jurisdiction. Click a marker to load that region's legal data."></svg>
+        <div id="suggestbox" style="margin-top:10px;font-size:12.5px;color:var(--mut)">loading /regions/suggest…</div>
+        <div class="btnrow" style="margin-top:8px">
+          <button class="btn mini gchip" data-k="global" onclick="selectRegion('global')">🌐 global — non-geographic default</button>
+          <button class="btn mini gchip" data-k="stablecoin_x402" onclick="selectRegion('stablecoin_x402')">⛓️ stablecoin_x402 — on-chain</button>
+        </div>
+        <p style="color:var(--mut);font-size:12px;margin-top:8px">Teal marker = jurisdiction ·
+        amber = selected · red = agreed in the Nash run below.</p>
+      </div>
+      <div class="card">
+        <span class="tag i">Selected jurisdiction · GET /regions/{region}/legal</span>
+        <h3 id="maptitle">No jurisdiction selected</h3>
+        <div class="result" id="mapout">click a marker on the globe, or a chip…</div>
+        <div id="clauses"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:22px">
+      <span class="tag t">Live · one POST /regions/recommend per pair</span>
+      <h3>⚖️ Nash cooperation — 1–1, 1–n, n–n</h3>
+      <p>Each mode draws buyer agents (left) and counterparties (right) and sends one real
+      <code>POST /regions/recommend</code> call per pair, with the ranked preference lists shown
+      in each box. A teal edge is labeled with the agreed region — the Nash bargaining solution
+      over both rankings. A red dashed edge means the pair shares no region and must not
+      transact. Agreed regions turn red on the globe above.</p>
+      <div class="btnrow">
+        <button class="btn mini modebtn" data-m="1-1" onclick="runNash('1-1')">1–1 · one client, one agent</button>
+        <button class="btn mini modebtn" data-m="1-n" onclick="runNash('1-n')">1–n · one buyer, three sellers</button>
+        <button class="btn mini modebtn" data-m="n-n" onclick="runNash('n-n')">n–n · three buyers, three sellers</button>
+      </div>
+      <div class="flowbox" style="margin-top:14px">
+        <svg id="nashsvg" width="100%" role="img"
+             aria-label="Nash pairing diagram: buyer agents left, counterparties right, each edge labeled with the agreed region or marked as no deal."></svg>
+      </div>
+      <div class="result" id="nashnote"></div>
+    </div>
+  </div>
+</section>
+
+<!-- KEY COMPONENTS -->
+<section id="components">
+  <div class="wrap reveal">
+    <div class="kicker">Key components</div>
+    <h2>Seven components, one API — each card's button runs it live</h2>
+    <div class="grid g2">
+      <div class="card"><span class="tag i">Component</span><h3>🗺️ Region recommender</h3>
+        <p><code>POST /regions/recommend</code> — reads each party's ranked list as ordinal utilities and returns
+        the <b>Nash bargaining solution</b>: the region maximising u<sub>client</sub>·u<sub>agent</sub>, ties broken by maximin.
+        Example: client ranks SEPA first, agent ranks UPI first, both rank Pix second — the result is Pix.
+        <code>agreed_region: null</code> means no shared region: do not transact.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(stepRecommend)">▶ Try it</button></div></div>
+      <div class="card"><span class="tag i">Component</span><h3>🔏 Consent vault</h3>
+        <p><code>POST /consent</code> stores the principal's budget and optional merchant allowlist;
+        <code>POST /pay</code> enforces it. A payment above the budget or to a merchant not on the
+        allowlist is refused with <code>403</code> before funds move.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoConsentPair)">▶ Try it — in-budget ✓ then over-budget ✗</button></div></div>
+      <div class="card"><span class="tag i">Component</span><h3>🔒 Programmable escrow</h3>
+        <p><code>POST /escrow → /deliver → /release</code>. Funds leave the payer at open, reach the payee only
+        when <code>proof == condition_expected</code>. Contest blocks release; refund makes the payer whole.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoEscrowLifecycle)">▶ Try it — full lifecycle incl. contest</button></div></div>
+      <div class="card"><span class="tag i">Component</span><h3>↩️ Region-aware recall</h3>
+        <p><code>POST /recall</code> — reverses a settled payment <b>only</b> when the region permits recall
+        <i>and</i> the payment provably breached the mandate. FedNow refuses; UPI/Pix honour a breach.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoBreachRecall)">▶ Try it — justified recall succeeds</button></div></div>
+      <div class="card"><span class="tag i">Component</span><h3>⚖️ Dispute taxonomy</h3>
+        <p><code>POST /dispute</code> — accepts a case only if the reason code is valid in the agreed region.
+        Example: <code>pix_med_return</code> is rejected under <code>in_upi</code>. <code>GET /taxonomy</code>
+        maps every reason code to one of 7 legal categories.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoDisputePair)">▶ Try it — valid ✓ then invalid ✗</button></div></div>
+      <div class="card"><span class="tag i">Component</span><h3>🤖⇄🤖 Machine-to-machine trade</h3>
+        <p><code>POST /m2m/delegate</code>: an agent delegates part of its budget to a sub-agent.
+        A delegation larger than its parent's budget is refused with <code>403</code>; every chain
+        traces to one root consent. <code>POST /m2m/handshake</code>: one call agrees the region,
+        checks the mandate, and opens a funded escrow between two agents. Refusals (<code>409</code>
+        no shared region, <code>403</code> over mandate) happen before funds move.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoM2M)">▶ Try it — delegate → pact → deliver → paid</button>
+        <button class="btn mini" onclick="go(atkM2M)">⛔ Over-delegation + no-region pact</button></div></div>
+      <div class="card"><span class="tag i">Component</span><h3>⚡ x402 on-rail payments</h3>
+        <p><code>GET /x402/resource/…</code> — pay-per-request over HTTP: the first request returns
+        <b>402 Payment Required</b> with the price and payee; the retry carries a signed
+        <code>X-PAYMENT</code> header and returns the resource plus an <code>X-PAYMENT-RESPONSE</code>
+        receipt. Each nonce settles once (replays refused). If the payment names a
+        <code>consent_id</code>, the budget is checked before settlement.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoX402)">▶ Try it — 402 → pay → 200</button>
+        <button class="btn mini" onclick="go(atkX402)">⛔ Replay + over-consent</button></div></div>
+      <div class="card"><span class="tag a">Meta</span><h3>🤖 Self-describing for agents</h3>
+        <p><code>GET /</code> lists every endpoint as JSON; <code>GET /openapi.json</code> is the machine spec;
+        <code>GET /stats</code> exposes live state; <a href="/skill.md">SKILL.md</a> is the one file an agent needs.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoDiscovery)">▶ Try it — agent-eye view of /</button></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- LEGAL TAXONOMY -->
+<section id="law">
+  <div class="wrap reveal">
+    <div class="kicker">Legal taxonomy · live from GET /taxonomy</div>
+    <h2>Every dispute reason code maps to civil &amp; commercial law</h2>
+    <p class="sub">Each reason code maps to one of 7 legal categories, each with its civil-law
+    and common-law basis. Each of the 22 jurisdictions lists its <b>statutes, scheme rulebooks,
+    and regulator</b>, with a link to the official source for each instrument. An accepted
+    <code>POST /dispute</code> returns the citation string in the response
+    (<code>legal_basis.citation</code>); the full per-region list is at
+    <code>GET /regions/{region}/legal</code>.</p>
+    <p class="sub" style="margin-top:10px;font-size:13px;font-style:italic;border-left:3px solid var(--amber);padding-left:12px">
+    ⚠️ Disclaimer: technical demonstration only — a notional-credits sandbox, not a bank,
+    payment institution, or law firm. Legal references cite real primary sources but are
+    engineering-grade mappings, <b>not legal advice</b>; obtain qualified local counsel before
+    relying on them in any jurisdiction. (<a href="/disclaimer">GET /disclaimer</a>)</p>
+
+    <div class="grid g2" style="margin-top:26px">
+      <div class="card">
+        <span class="tag i">Live · GET /regions/{region}/legal</span>
+        <h3>⚖️ Jurisdiction law explorer</h3>
+        <p>Pick a jurisdiction — its legal system, regulator, official instruments
+        (clickable, primary sources), and how each dispute code is legally grounded there.</p>
+        <label for="lawsel">Jurisdiction</label>
+        <select id="lawsel" onchange="showLaw()"><option>loading…</option></select>
+        <div class="result" id="lawout" style="min-height:60px"></div>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoLegal)">▶ Fetch in console (agent view)</button></div>
+      </div>
+      <div class="card">
+        <span class="tag i">Live · GET /taxonomy</span>
+        <h3>📚 The seven legal categories</h3>
+        <p>Reason codes → substantive law, hydrated live from the taxonomy endpoint:</p>
+        <div class="result" id="taxout" style="min-height:60px;color:var(--mut)">loading /taxonomy…</div>
+      </div>
+    </div>
+    <div id="lawinstr" class="grid g3" style="margin-top:16px"></div>
+  </div>
+</section>
+
+<!-- PERSONAS -->
+<section id="personas">
+  <div class="wrap reveal">
+    <div class="kicker">Personas</div>
+    <h2>Four callers — each button runs that caller's requests</h2>
+    <div class="grid g2">
+      <div class="card"><span class="tag t">Persona</span><h3>🛒 The shopping / booking agent</h3>
+        <p><b>Job:</b> spends its principal's money on flights, goods, subscriptions.<br>
+        <b>Without Tvist:</b> prepays on final rails, overspends its mandate, no recourse.<br>
+        <b>With Tvist:</b> escrows the fare, pays inside consent, disputes with valid codes.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(runFlow)">▶ Play this persona</button></div></div>
+      <div class="card"><span class="tag t">Persona</span><h3>🧑‍🦱 The principal (human)</h3>
+        <p><b>Job:</b> delegates — "book it, up to 500".<br>
+        <b>Without Tvist:</b> discovers the 900-credit charge after settlement, on an irrevocable rail.<br>
+        <b>With Tvist:</b> the 900 charge is a <code>403</code>; a slipped-through breach is recalled.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoPrincipal)">▶ Play this persona</button></div></div>
+      <div class="card"><span class="tag t">Persona</span><h3>🏪 The service-provider agent</h3>
+        <p><b>Job:</b> sells to agents it has never interacted with.<br>
+        <b>Without Tvist:</b> either ships before payment and risks non-payment, or requires
+        prepayment and the buyer carries the risk.<br>
+        <b>With Tvist:</b> confirms funds are held in escrow before shipping; is paid when the
+        delivery proof is accepted.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoProvider)">▶ Play this persona</button></div></div>
+      <div class="card"><span class="tag t">Persona</span><h3>🏛️ The marketplace / platform</h3>
+        <p><b>Job:</b> hosts agent↔agent trades across borders.<br>
+        <b>Without Tvist:</b> must implement dispute rules separately for each rail, corridor,
+        and regulator.<br>
+        <b>With Tvist:</b> one call returns the agreed jurisdiction and its full dispute regime.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(stepRecommend)">▶ Play this persona</button></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- USE CASES -->
+<section id="usecases">
+  <div class="wrap reveal">
+    <div class="kicker">Use cases</div>
+    <h2>Eight use cases — each button runs the listed calls</h2>
+    <div class="grid g3">
+      <div class="card"><span class="tag a">Use case</span><h3>✈️ Escrowed travel booking</h3>
+        <p>Agent escrows the fare; airline is paid only when <code>ticket_issued</code> lands. The SKILL.md
+        worked example — 5 real calls.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(runFlow)">▶ Run</button></div></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🇮🇳 DigiDoot — an agent per citizen</h3>
+        <p>India's citizen agents (Aadhaar + UPI + consent) use Tvist as the settlement endpoint:
+        welfare within mandate, rogue charges recalled under the UPI regime.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoDigiDoot)">▶ Run</button></div></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🤝 Cross-border agent trade</h3>
+        <p>EU client-agent, Brazilian seller-agent: the recommender lands on Pix as the Nash optimum,
+        and both sides know the recall window before a credit moves.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoCrossBorder)">▶ Run</button></div></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🛰️ Marketplace dispute rail</h3>
+        <p>Platforms route every contested trade through <code>/dispute</code> with region-valid codes —
+        one taxonomy instead of N rail-specific ones.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoDisputePair)">▶ Run</button></div></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🧾 Subscription guardrails</h3>
+        <p>A recurring agent payment carries a standing consent; the first renewal above budget is
+        refused, not refunded-after-the-fact.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoSubscription)">▶ Run</button></div></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🤖⇄🤖 Agent-swarm procurement</h3>
+        <p>An orchestrator agent delegates bounded budgets to sub-agents. Each sub-agent sets up
+        a trade with a seller agent in one call (region + mandate + funded escrow) and completes
+        it on delivery proof. No human is involved in any step.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoM2M)">▶ Run</button></div></div>
+      <div class="card"><span class="tag a">Use case</span><h3>⚡ Pay-per-call agent APIs</h3>
+        <p>An agent buys a paid resource over x402 — 402 challenge, signed <code>X-PAYMENT</code>,
+        receipt — with its principal's consent cap enforced even on the irrevocable rail.</p>
+        <div class="btnrow"><button class="btn mini" onclick="go(demoX402)">▶ Run</button></div></div>
+      <div class="card"><span class="tag a">Use case</span><h3>🧪 Protocol testbeds</h3>
+        <p>The same logic ships as a <code>payments</code> plugin in Nanda Town — run adversarial swarm
+        scenarios against it before touching production rails.</p>
+        <div class="btnrow"><a class="btn mini" href="/docs">Open API docs →</a></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- API -->
+<section id="api">
+  <div class="wrap reveal">
+    <div class="kicker">API</div>
+    <h2>33 endpoints. Every snippet below is runnable — ▶ run sends it from this page.</h2>
+<pre>
+<span class="c"># copy once — this page's own sandbox origin:</span>
+BASE=<span class="g origin">this URL</span>
+
+<span class="c"># Nash-optimal jurisdiction for two parties with different rankings</span>  <button class="btn mini" onclick="go(stepRecommend)">▶ run</button>
+curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
+  -d '{"client_prefs":["eu_sepa","br_pix","in_upi"],"agent_prefs":["in_upi","br_pix","eu_sepa"]}'
+<span class="g">→ {"agreed_region":"br_pix","method":"nash_bargaining","naive_client_first":"eu_sepa"}</span>
+
+<span class="c"># over-consent charge — refused before funds move</span>  <button class="btn mini" onclick="go(atkConsent)">▶ run</button>
+curl -s -X POST $BASE/pay -d '{"ref":"p2","from_account":"alice","to_account":"shop",
+  "amount":900,"region":"br_pix","consent_id":"c1"}'
+<span class="r">→ 403 {"error":"payment 900 to shop exceeds consent c1"}</span>
+
+<span class="c"># escrow release before delivery — refused</span>  <button class="btn mini" onclick="go(atkEscrow)">▶ run</button>
+curl -s -X POST $BASE/escrow/e1/release
+<span class="r">→ 403 {"error":"release condition not satisfied (not delivered)"}</span>
+
+<span class="c"># mandate-breach recall under UPI — allowed, payment reversed</span>  <button class="btn mini" onclick="go(demoBreachRecall)">▶ run</button>
+curl -s -X POST $BASE/recall -d '{"ref":"u1","consent_id":"cb"}'
+<span class="g">→ {"reversed":true,"reason":"mandate breach recalled"}</span>
+</pre>
+    <table>
+      <tr><th>Gate</th><th>Attack</th><th>Plain ledger</th><th>Tvist (click to verify live)</th></tr>
+      <tr><td>Region</td><td>Transact with no shared jurisdiction</td><td class="no">settles ungoverned</td>
+        <td><button class="btn mini" id="v1" onclick="verifyGate(1)">▶ verify — null → no deal</button></td></tr>
+      <tr><td>Mandate</td><td>Charge beyond the principal's consent</td><td class="no">pays</td>
+        <td><button class="btn mini" id="v2" onclick="verifyGate(2)">▶ verify — 403 refused</button></td></tr>
+      <tr><td>Delivery</td><td>Drain escrow without delivering</td><td class="no">paid up front</td>
+        <td><button class="btn mini" id="v3" onclick="verifyGate(3)">▶ verify — release blocked</button></td></tr>
+      <tr><td>Recall</td><td>Claw back a legitimate final payment</td><td class="no">refund reverses it</td>
+        <td><button class="btn mini" id="v4" onclick="verifyGate(4)">▶ verify — refused w/o breach</button></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- LIVE PLAYGROUND -->
+<section id="try">
+  <div class="wrap reveal">
+    <div class="kicker">Try it — live, in this page</div>
+    <h2>Test the API without leaving the browser</h2>
+    <p class="sub">Every button on this page fires a real <code>fetch</code> at this API — the same
+    endpoints an agent curls from SKILL.md. Green = the happy path succeeds; red = the gate
+    correctly refuses an attack. IDs are auto-uniqued so you can repeat forever. The stats strip
+    below is <code>GET /stats</code>, refreshed after every call — watch settlements and held
+    credits move as you click.</p>
+
+    <div class="grid g2" style="margin-top:26px">
+      <div class="card">
+        <span class="tag t">Happy path</span>
+        <h3>▶ Full escrowed booking (5 calls)</h3>
+        <p>recommend → consent → escrow → deliver → release. The payee is paid only after
+        the delivery proof lands.</p>
+        <div class="btnrow"><button class="btn solid" onclick="testApi()">✓ Run the API self-test (10 checks)</button>
+        <button class="btn" onclick="runFlow()">Run the flow</button>
+        <button class="btn" onclick="demoX402()">⚡ x402: 402 → pay → 200</button>
+        <button class="btn" onclick="demoM2M()">🤖⇄🤖 M2M trade</button></div>
+      </div>
+      <div class="card">
+        <span class="tag c">Attacks — expect refusals</span>
+        <h3>⛔ Fire an attack at each gate</h3>
+        <p>Each returns an error or a refusal — proof the gates hold on the live service.</p>
+        <div class="btnrow">
+          <button class="btn" onclick="atkConsent()">Over-consent pay</button>
+          <button class="btn" onclick="atkEscrow()">Drain escrow</button>
+          <button class="btn" onclick="atkFednow()">FedNow recall</button>
+          <button class="btn" onclick="atkClawback()">Unjust clawback</button>
+          <button class="btn" onclick="atkReason()">Wrong-region dispute</button>
+          <button class="btn" onclick="atkX402()">x402 replay</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <span class="tag t">Live · POST /escrow → /deliver → /release · /contest → /refund</span>
+      <h3>🔒 Escrow builder — jurisdiction of your choice</h3>
+      <p>Open an escrow under any of the 22 regimes and walk it through its lifecycle. The
+      selected regime's escrow rule is shown below the selector. Selecting a jurisdiction on
+      the <a href="#map">globe</a> also sets it here. To see a refusal, release before
+      delivering, or deliver a proof that does not match the condition.</p>
+      <div class="grid g3" style="margin-top:12px">
+        <div>
+          <label for="esregion">Jurisdiction (of choice)</label>
+          <select id="esregion" onchange="escInfo()"><option>loading from /regions…</option></select>
+          <div class="result" id="esinfo" style="min-height:36px"></div>
+          <label for="esamount">Amount (credits)</label>
+          <input id="esamount" value="400">
+          <label for="escond">Condition the payee must prove</label>
+          <input id="escond" value="ticket_issued">
+        </div>
+        <div>
+          <label for="espayer">Payer</label>
+          <input id="espayer" value="alice">
+          <label for="espayee">Payee</label>
+          <input id="espayee" value="seller">
+          <label for="esproof">Delivery proof to submit</label>
+          <input id="esproof" value="ticket_issued">
+        </div>
+        <div>
+          <label>Lifecycle — each button is one real call</label>
+          <div class="btnrow" style="margin-top:4px">
+            <button class="btn mini solid" onclick="escOpen()">1 · Open + fund</button>
+            <button class="btn mini" onclick="escDeliver()">2 · Deliver proof</button>
+            <button class="btn mini" onclick="escRelease()">3 · Release</button>
+            <button class="btn mini" onclick="escContest()">Contest</button>
+            <button class="btn mini" onclick="escRefund()">Refund</button>
+            <button class="btn mini" onclick="escStatus()">Status</button>
+          </div>
+          <div class="result" id="esout" style="min-height:40px">no escrow open yet — click "1 · Open + fund"</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <h3 style="flex:1">Console — live requests &amp; responses</h3>
+        <button class="btn mini" onclick="clearCon()">Clear</button>
+      </div>
+      <pre id="console" style="min-height:150px;max-height:340px;overflow-y:auto;margin:0"><span class="c"># click anything on this page — requests and live responses appear here…</span></pre>
+      <div class="statbar" id="statbar" title="GET /stats — refreshed after every call">
+        <div class="stat"><div class="v" id="s-accounts">–</div><div class="k">accounts</div></div>
+        <div class="stat"><div class="v" id="s-settlements">–</div><div class="k">settlements</div></div>
+        <div class="stat"><div class="v" id="s-recalled">–</div><div class="k">recalled</div></div>
+        <div class="stat"><div class="v" id="s-escrows">–</div><div class="k">escrows</div></div>
+        <div class="stat"><div class="v" id="s-held">–</div><div class="k">credits in escrow</div></div>
+        <div class="stat"><div class="v" id="s-disputes">–</div><div class="k">disputes</div></div>
+        <div class="stat"><div class="v" id="s-funds">–</div><div class="k">total funds (conserved)</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DOWNLOADS -->
+<section id="downloads">
+  <div class="wrap reveal">
+    <div class="kicker">Downloads · hackathon deliverables</div>
+    <h2>Files: agent contract, deployment guide, API spec, summary documents</h2>
+    <p class="sub">The NANDA Town skills track requires a hosted service, tested endpoints, and a
+    SKILL.md an agent can succeed with unaided. All three are downloadable here, plus the
+    summary documents.</p>
+    <div class="grid g3">
+      <div class="card"><span class="tag t">Markdown</span><h3>SKILL.md</h3>
+        <p>The agent contract: endpoints, copy-paste curl steps, a full worked example, error semantics.</p>
+        <div class="btnrow"><a class="btn" href="/view/skill">📖 Read online</a><a class="btn solid" href="/skill.md?download=1">⤓ Download</a><a class="btn" href="/skill.md">Raw</a></div></div>
+      <div class="card"><span class="tag t">Markdown</span><h3>README.md</h3>
+        <p>Run locally, deploy to Railway / Render / Fly / Docker in one command, health checks.</p>
+        <div class="btnrow"><a class="btn" href="/view/readme">📖 Read online</a><a class="btn solid" href="/readme.md?download=1">⤓ Download</a><a class="btn" href="/readme.md">Raw</a></div></div>
+      <div class="card"><span class="tag t">Spec</span><h3>OpenAPI 3.1</h3>
+        <p>The machine-readable contract — enough for any agent framework to generate a client.</p>
+        <div class="btnrow"><a class="btn solid" href="/openapi.json" download="tvist-openapi.json">⤓ Download</a><a class="btn" href="/docs">Swagger UI</a></div></div>
+      <div class="card"><span class="tag a">Pitch kit</span><h3>Executive brief (PDF)</h3>
+        <p>One page: problem, existing options, solution, architecture.</p>
+        <div class="btnrow"><a class="btn solid" href="/download/brief-pdf">⤓ Download</a></div></div>
+      <div class="card"><span class="tag a">Pitch kit</span><h3>Executive summary (PDF + DOCX)</h3>
+        <p>The dense one-pager, and the full 5-page Word document with all 22 jurisdictions and the complete legal taxonomy.</p>
+        <div class="btnrow"><a class="btn solid" href="/download/summary-pdf">⤓ PDF</a><a class="btn solid" href="/download/summary-docx">⤓ DOCX</a></div></div>
+      <div class="card"><span class="tag a">Pitch kit</span><h3>Presentation deck (PPTX)</h3>
+        <p>6 slides: overview, trust spectrum, all 22 jurisdictions, legal taxonomy, x402 + M2M, proof — data-driven from this service.</p>
+        <div class="btnrow"><a class="btn solid" href="/download/deck-pptx">⤓ Download</a></div></div>
+    </div>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  <div class="fcols">
+    <div>
+      <h3>Explore</h3>
+      <a class="f" href="#overview">Executive overview</a>
+      <a class="f" href="#pain">Pain points</a>
+      <a class="f" href="#spectrum">Trust spectrum</a>
+      <a class="f" href="#arch">Architecture &amp; flow</a>
+      <a class="f" href="#map">Jurisdiction map &amp; Nash</a>
+      <a class="f" href="#components">Key components</a>
+      <a class="f" href="#law">Legal taxonomy</a>
+      <a class="f" href="#personas">Personas</a>
+      <a class="f" href="#usecases">Use cases</a>
+    </div>
+    <div>
+      <h3>Test &amp; integrate</h3>
+      <a class="f" href="#api">API reference</a>
+      <a class="f" href="#try">Live playground</a>
+      <a class="f" href="/docs">Swagger UI</a>
+      <a class="f" href="/openapi.json">OpenAPI spec</a>
+      <a class="f" href="/" onclick="event.preventDefault();go(demoDiscovery)">JSON index (run live)</a>
+    </div>
+    <div>
+      <h3>Live endpoints</h3>
+      <a class="f" href="/health">/health — liveness</a>
+      <a class="f" href="/stats">/stats — live metrics</a>
+      <a class="f" href="/regions">/regions — all regimes</a>
+      <a class="f" href="/taxonomy">/taxonomy — dispute law map</a>
+    </div>
+    <div>
+      <h3>Deliverables</h3>
+      <a class="f" href="/view/skill">📖 SKILL.md — read online</a>
+      <a class="f" href="/skill.md?download=1">⤓ SKILL.md — download</a>
+      <a class="f" href="/view/readme">📖 README — read online</a>
+      <a class="f" href="/readme.md?download=1">⤓ README — download</a>
+      <a class="f" href="/openapi.json" download="tvist-openapi.json">⤓ OpenAPI JSON</a>
+      <a class="f" href="/download/brief-pdf">⤓ Executive brief (PDF)</a>
+      <a class="f" href="/download/deck-pptx">⤓ Deck (PPTX)</a>
+      <a class="f" href="#downloads">All downloads</a>
+    </div>
+  </div>
+  <p class="legal">
+    <b>tvist<span style="color:var(--teal)">.ai</span></b> — escrow, consent &amp; dispute for AI agents ·
+    dual-use: humans get this page, agents get JSON at the same URL ·
+    built on the Tvist payments layer from the Nanda Town hackathon ·
+    <a href="#top">back to top ↑</a><br><br>
+    <b>Disclaimer:</b> technical demonstration only — a notional-credits sandbox, not a bank,
+    payment institution, or law firm. Legal references cite real primary sources but are
+    engineering-grade mappings, <b>not legal advice</b>; obtain qualified local counsel before
+    relying on them in any jurisdiction. <a href="/disclaimer">/disclaimer</a>
+  </p>
+</div></footer>
+
+<button id="totop" class="totop" onclick="scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">↑</button>
+
+<script>
+// ---- reveal-on-scroll + metric count-up ------------------------------------
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  e.target.classList.add('seen');
+  e.target.querySelectorAll('.n[data-count]').forEach(countUp);
+}), {threshold:.18});
+document.querySelectorAll('.reveal, .metrics, .metric').forEach(el => io.observe(el));
+function countUp(el){
+  if (el.dataset.done) return; el.dataset.done = 1;
+  const end = +el.dataset.count, t0 = performance.now(), dur = 1200;
+  const step = t => { const p = Math.min((t - t0) / dur, 1);
+    el.textContent = Math.round(end * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function setMetric(id, v){
+  const el = document.getElementById(id); if (!el) return;
+  el.dataset.count = v;
+  if (el.dataset.done) el.textContent = v;   // already animated → set directly
+}
+
+// ---- live console -----------------------------------------------------------
+const con = document.getElementById('console');
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function note(t){ con.innerHTML += `\n<span class="c"># ${esc(t)}</span>`; con.scrollTop = con.scrollHeight; }
+function logReq(m, p, body){
+  con.innerHTML += `\n<span class="y">→ ${m} ${esc(p)}</span>` +
+    (body ? ` <span class="c">${esc(JSON.stringify(body))}</span>` : '');
+  con.scrollTop = con.scrollHeight;
+}
+function logRes(status, data, good){
+  con.innerHTML += `\n<span class="${good ? 'g' : 'r'}">← ${status} ${esc(JSON.stringify(data))}</span>\n`;
+  con.scrollTop = con.scrollHeight;
+}
+function clearCon(){ con.innerHTML = '<span class="c"># cleared</span>'; }
+const uid = () => Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-4);
+
+async function call(m, p, body, expectFail){
+  logReq(m, p, body);
+  try{
+    const r = await fetch(p, {method:m, headers:{'content-type':'application/json'},
+      body: body ? JSON.stringify(body) : undefined});
+    const data = await r.json();
+    const refused = !r.ok || data.reversed === false || data.accepted === false || data.agreed_region === null;
+    logRes(r.status, data, expectFail ? refused : r.ok && !refused);
+    refreshStats();
+    return {status: r.status, data, refused};
+  }catch(e){ logRes('ERR', String(e), false); return {status:0, data:null, refused:true}; }
+}
+// scroll to console, then run
+function go(fn){ document.getElementById('try').scrollIntoView({behavior:'smooth', block:'start'});
+  setTimeout(fn, 350); }
+
+// ---- live stats (GET /stats) -------------------------------------------------
+async function refreshStats(){
+  try{
+    const s = await (await fetch('/stats')).json();
+    const set = (id, v) => { const el = document.getElementById(id);
+      if (el && el.textContent != String(v)) { el.textContent = v;
+        el.parentElement.classList.remove('flash'); void el.offsetWidth;
+        el.parentElement.classList.add('flash'); } else if (el) el.textContent = v; };
+    set('s-accounts', s.accounts); set('s-settlements', s.settlements);
+    set('s-recalled', s.recalled); set('s-escrows', s.escrows.total);
+    set('s-held', s.held_credits); set('s-disputes', s.disputes);
+    set('s-funds', s.total_funds);
+    setMetric('m-regions', s.regions);
+    setMetric('m-accounts', s.accounts);
+    setMetric('m-settlements', s.settlements);
+  }catch(e){}
+}
+
+// ---- boot: health pill, metrics, region explorer ------------------------------
+// every ".origin" placeholder shows this deployment's own base URL, so the
+// snippets on the page are copy-paste runnable against this exact sandbox
+document.querySelectorAll('.origin').forEach(el => { el.textContent = location.origin; });
+(async function boot(){
+  try{
+    const h = await (await fetch('/health')).json();
+    document.getElementById('statusdot').className = 'dot ' + (h.status === 'ok' ? 'up' : 'down');
+    document.getElementById('statustxt').textContent = h.status === 'ok' ? 'sandbox live — GET /health: ok' : 'degraded';
+  }catch(e){
+    document.getElementById('statusdot').className = 'dot down';
+    document.getElementById('statustxt').textContent = 'offline';
+  }
+  try{
+    const spec = await (await fetch('/openapi.json')).json();
+    setMetric('m-endpoints', Object.keys(spec.paths).length);
+  }catch(e){}
+  try{
+    const rj = await (await fetch('/regions')).json();
+    window._regions = rj.regions;
+    const sel = document.getElementById('regsel');
+    sel.innerHTML = Object.entries(rj.regions)
+      .map(([k, r]) => `<option value="${k}">${esc(r.label)}</option>`).join('');
+    sel.value = 'br_pix'; showRegion();
+    const lsel = document.getElementById('lawsel');
+    lsel.innerHTML = sel.innerHTML;
+    lsel.value = 'br_pix'; showLaw();
+    const esel = document.getElementById('esregion');
+    esel.innerHTML = sel.innerHTML;
+    esel.value = 'br_pix'; escInfo();
+  }catch(e){ document.getElementById('regout').textContent = 'could not load /regions'; }
+  try{
+    const tax = await (await fetch('/taxonomy')).json();
+    window._tax = tax;
+    document.getElementById('taxout').innerHTML = Object.entries(tax.categories)
+      .map(([k, c]) => `<div style="margin-bottom:7px"><b style="color:var(--txt)">${esc(c.label)}</b>` +
+        `<span style="color:var(--mut)"> — ${esc(c.description)} ` +
+        `<i>${Object.entries(tax.reason_codes).filter(([,v]) => v.category === k)
+             .map(([code]) => '<code>' + esc(code) + '</code>').join(' ')}</i></span></div>`)
+      .join('');
+  }catch(e){ document.getElementById('taxout').textContent = 'could not load /taxonomy'; }
+  refreshStats();
+})();
+
+// ---- legal taxonomy explorer (GET /regions/{r}/legal) --------------------------
+async function showLaw(){
+  const k = document.getElementById('lawsel').value;
+  const out = document.getElementById('lawout'), grid = document.getElementById('lawinstr');
+  out.className = 'result'; out.textContent = `loading /regions/${k}/legal…`;
+  try{
+    const d = await (await fetch(`/regions/${k}/legal`)).json();
+    out.className = 'result';
+    out.innerHTML =
+      `<b style="color:var(--txt)">${esc(d.label)}</b><br>` +
+      `legal system: <b style="color:var(--teal)">${esc(d.legal_system)}</b>` +
+      ` · regulator: ${esc(d.regulator)}<br>` +
+      `recall: <span class="${d.recall_allowed ? 'ok' : 'no'}">${d.recall_allowed ? 'allowed' : 'FORBIDDEN'}</span>` +
+      (d.recall_window_ticks ? ` (window ${d.recall_window_ticks})` : '') + `<br><br>` +
+      d.reason_code_linkage.map(l =>
+        `<code>${esc(l.reason_code)}</code> → <b style="color:var(--txt)">${esc(l.label)}</b>` +
+        `<br><span style="color:var(--mut);font-size:12px">${esc(l.operative_basis)}</span>`
+      ).join('<br>');
+    grid.innerHTML = d.instruments.map(i =>
+      `<div class="card"><span class="tag a">${esc(i.role)}</span>` +
+      `<h3 style="font-size:14.5px"><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.name)} ↗</a></h3>` +
+      `<p style="font-family:var(--mono);font-size:12px">${esc(i.citation)}</p></div>`).join('');
+  }catch(e){ out.className = 'result bad'; out.textContent = String(e); }
+}
+async function demoLegal(){
+  const k = document.getElementById('lawsel') ? document.getElementById('lawsel').value : 'in_upi';
+  note(`── LEGAL · jurisdiction law for ${k} (what an agent cites) ──`);
+  await call('GET', `/regions/${k}/legal`);
+  await call('GET', '/taxonomy');
+}
+
+function showRegion(){
+  const k = document.getElementById('regsel').value, r = (window._regions||{})[k];
+  if (!r) return;
+  document.getElementById('regout').innerHTML =
+    `<span class="${r.recall_allowed ? 'ok' : 'no'}">recall: ${r.recall_allowed ? 'allowed' : 'FORBIDDEN'}</span>` +
+    ` · window: ${r.recall_window_ticks || '—'} ticks · rail: ${esc(r.rail)}` +
+    ` · irrevocable: ${r.irrevocable}` +
+    `<br>reason codes: ${r.reason_codes.map(esc).join(', ')}`;
+}
+async function uiRecommend(){
+  const parse = id => document.getElementById(id).value.split(',').map(s => s.trim()).filter(Boolean);
+  const out = document.getElementById('recout');
+  out.className = 'result'; out.textContent = 'calling /regions/recommend…';
+  try{
+    const r = await fetch('/regions/recommend', {method:'POST',
+      headers:{'content-type':'application/json'},
+      body: JSON.stringify({client_prefs: parse('cprefs'), agent_prefs: parse('aprefs')})});
+    const d = await r.json();
+    if (d.agreed_region){
+      out.className = 'result ok';
+      out.innerHTML = `agreed: <b>${esc(d.agreed_region)}</b> (${esc(d.regime.label)})` +
+        (d.naive_client_first && d.naive_client_first !== d.agreed_region
+          ? ` — naive client-first would be ${esc(d.naive_client_first)}` : '');
+    } else { out.className = 'result bad'; out.textContent = 'no shared region — do not transact'; }
+    refreshStats();
+  }catch(e){ out.className = 'result bad'; out.textContent = String(e); }
+}
+
+// ---- pipeline steps (flow-chart nodes) ----------------------------------------
+async function stepRecommend(){
+  note('── STEP · negotiate the jurisdiction (Nash) ──');
+  await call('POST','/regions/recommend',{client_prefs:['eu_sepa','br_pix','in_upi'],agent_prefs:['in_upi','br_pix','eu_sepa']});
+}
+async function stepConsent(){
+  const id = uid();
+  note('── STEP · record the principal\'s consent ──');
+  await call('POST','/consent',{consent_id:'c-'+id,principal:'human-'+id,budget:500});
+}
+async function stepEscrow(){
+  const id = uid();
+  note('── STEP · open + fund an escrow (funds held) ──');
+  await call('POST','/escrow',{escrow_id:'e-'+id,payer:'human-'+id,payee:'provider-'+id,
+    amount:400,region:'br_pix',condition_expected:'delivered'});
+  await call('GET',`/escrow/e-${id}`);
+}
+async function stepDeliver(){
+  const id = uid();
+  note('── STEP · deliver against the escrow condition ──');
+  await call('POST','/escrow',{escrow_id:'e-'+id,payer:'human-'+id,payee:'provider-'+id,
+    amount:300,region:'br_pix',condition_expected:'delivered'});
+  await call('POST',`/escrow/e-${id}/deliver`,{proof:'delivered'});
+  await call('GET',`/escrow/e-${id}`);
+}
+
+// ---- escrow builder: lifecycle under a jurisdiction of choice ------------------
+let _escrow = null;   // {id, region} of the escrow currently being walked
+function escInfo(){
+  const k = document.getElementById('esregion').value, r = (window._regions||{})[k];
+  const out = document.getElementById('esinfo');
+  if (!r){ out.textContent = ''; return; }
+  out.innerHTML =
+    `escrow rule: ${r.requires_delivery_for_escrow
+       ? '<span class="ok">delivery proof required before release</span>'
+       : 'release gate applies (permissive regime)'}` +
+    ` · irrevocable: ${r.irrevocable}` +
+    ` · recall: <span class="${r.recall_allowed?'ok':'no'}">${r.recall_allowed?'allowed':'not allowed'}</span>`;
+}
+function escSet(msg, ok){
+  const out = document.getElementById('esout');
+  out.className = 'result ' + (ok ? 'ok' : 'bad'); out.innerHTML = msg;
+}
+async function escOpen(){
+  const region = document.getElementById('esregion').value;
+  const id = 'ui-' + uid();
+  note(`── ESCROW BUILDER · open under ${region} ──`);
+  const r = await call('POST', '/escrow', {
+    escrow_id: id,
+    payer: document.getElementById('espayer').value.trim(),
+    payee: document.getElementById('espayee').value.trim(),
+    amount: Number(document.getElementById('esamount').value),
+    region,
+    condition_expected: document.getElementById('escond').value.trim(),
+  });
+  if (r.status === 200){ _escrow = {id, region};
+    escSet(`escrow <b>${id}</b> FUNDED under ${region} — funds held. Next: deliver the proof.`, true);
+  } else escSet(`open failed (${r.status}) — see console`, false);
+}
+async function escDeliver(){
+  if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
+  const proof = document.getElementById('esproof').value.trim();
+  const expectFail = proof !== document.getElementById('escond').value.trim();
+  const r = await call('POST', `/escrow/${_escrow.id}/deliver`, {proof}, expectFail);
+  if (r.status === 200 && r.data.delivered === true)
+    escSet('delivered — proof matched the condition. Next: release.', true);
+  else
+    escSet('not delivered — the proof does not equal the condition, so release stays blocked', false);
+}
+async function escRelease(){
+  if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
+  const r = await call('POST', `/escrow/${_escrow.id}/release`, null, true);
+  if (r.status === 200) escSet(`RELEASED — payee paid under ${_escrow.region}. Open another to repeat.`, true);
+  else escSet(`release refused (${r.status}) — not delivered (or contested)`, false);
+}
+async function escContest(){
+  if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
+  const r = await call('POST', `/escrow/${_escrow.id}/contest`);
+  if (r.status === 200) escSet('CONTESTED — release is blocked; refund returns the funds to the payer', true);
+  else escSet(`contest refused (${r.status}) — see console`, false);
+}
+async function escRefund(){
+  if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
+  const r = await call('POST', `/escrow/${_escrow.id}/refund`);
+  if (r.status === 200) escSet('REFUNDED — payer made whole. Open another to repeat.', true);
+  else escSet(`refund refused (${r.status}) — only a contested escrow can be refunded`, false);
+}
+async function escStatus(){
+  if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
+  const r = await call('GET', `/escrow/${_escrow.id}`);
+  if (r.status === 200) escSet(`status: <b>${r.data.status}</b> · amount ${r.data.amount} · region ${_escrow.region}`, true);
+  else escSet(`status failed (${r.status})`, false);
+}
+
+// ---- one-click API self-test (nav + hero "Test the API" buttons) ---------------
+async function testApi(){
+  const id = uid();
+  let pass = 0, total = 0;
+  const check = (ok, what) => { total++; if (ok) pass++;
+    note(`${ok ? '✓' : '✗'} ${what}`); return ok; };
+  note(`── API SELF-TEST · run ${id} — each step states its expected result ──`);
+  let r = await call('GET', '/health');
+  check(r.status === 200 && r.data.status === 'ok', 'health: expected 200 {"status":"ok"}');
+  r = await call('POST', '/regions/recommend',
+    {client_prefs:['eu_sepa','br_pix'], agent_prefs:['br_pix','in_upi']});
+  check(r.status === 200 && r.data.agreed_region === 'br_pix',
+    'recommend: expected agreed_region "br_pix" (the only shared region)');
+  r = await call('POST', '/consent', {consent_id:'t-'+id, principal:'tester-'+id, budget:500});
+  check(r.status === 200, 'consent: expected 200 (mandate stored)');
+  r = await call('POST', '/pay', {ref:'ok-'+id, from_account:'tester-'+id, to_account:'shop',
+    amount:300, region:'br_pix', consent_id:'t-'+id});
+  check(r.status === 200 && r.data.settled === true, 'pay 300 within 500: expected 200 settled');
+  r = await call('POST', '/pay', {ref:'no-'+id, from_account:'tester-'+id, to_account:'shop',
+    amount:900, region:'br_pix', consent_id:'t-'+id}, true);
+  check(r.status === 403, 'pay 900 over 500: expected 403 refusal, funds unmoved');
+  r = await call('POST', '/escrow', {escrow_id:'t-'+id, payer:'tester-'+id, payee:'seller',
+    amount:100, region:'br_pix', condition_expected:'done'});
+  check(r.status === 200, 'escrow open: expected 200 (funds held)');
+  r = await call('POST', `/escrow/t-${id}/release`, null, true);
+  check(r.status === 403, 'release before delivery: expected 403');
+  r = await call('POST', `/escrow/t-${id}/deliver`, {proof:'done'});
+  check(r.status === 200, 'deliver matching proof: expected 200');
+  r = await call('POST', `/escrow/t-${id}/release`);
+  check(r.status === 200, 'release after delivery: expected 200 (payee paid)');
+  r = await call('GET', '/stats');
+  check(r.status === 200, 'stats: expected 200 (live state readable)');
+  note(`── SELF-TEST RESULT: ${pass}/${total} checks passed ──`);
+}
+
+// ---- full happy flow ----------------------------------------------------------
+async function runFlow(){
+  const id = uid();
+  note(`── HAPPY PATH · escrowed booking · run ${id} ──`);
+  await call('POST','/regions/recommend',{client_prefs:['in_upi'],agent_prefs:['in_upi']});
+  await call('POST','/consent',{consent_id:'c-'+id,principal:'human-'+id,budget:500});
+  await call('POST','/escrow',{escrow_id:'e-'+id,payer:'human-'+id,payee:'airline-'+id,
+    amount:450,region:'in_upi',condition_expected:'ticket_issued'});
+  await call('POST',`/escrow/e-${id}/deliver`,{proof:'ticket_issued'});
+  await call('POST',`/escrow/e-${id}/release`);
+  await call('GET',`/accounts/airline-${id}`);
+  note('✓ payee paid only after delivery — flow complete');
+}
+
+// ---- component demos ------------------------------------------------------------
+async function demoConsentPair(){
+  const id = uid();
+  note('── CONSENT VAULT · in-budget settles, over-budget is refused ──');
+  await call('POST','/consent',{consent_id:'c-'+id,principal:'human-'+id,budget:500});
+  await call('POST','/pay',{ref:'ok-'+id,from_account:'human-'+id,to_account:'shop',
+    amount:300,region:'in_upi',consent_id:'c-'+id});
+  await call('POST','/pay',{ref:'no-'+id,from_account:'human-'+id,to_account:'shop',
+    amount:900,region:'in_upi',consent_id:'c-'+id}, true);
+}
+async function demoEscrowLifecycle(){
+  const id = uid();
+  note('── ESCROW · open → contest → refund (payer made whole) ──');
+  await call('GET',`/accounts/human-${id}`);
+  await call('POST','/escrow',{escrow_id:'e-'+id,payer:'human-'+id,payee:'seller',
+    amount:250,region:'eu_sepa',condition_expected:'delivered'});
+  await call('POST',`/escrow/e-${id}/contest`);
+  await call('POST',`/escrow/e-${id}/release`, null, true);
+  await call('POST',`/escrow/e-${id}/refund`);
+  await call('GET',`/accounts/human-${id}`);
+}
+async function demoBreachRecall(){
+  const id = uid();
+  note('── RECALL · mandate breach under UPI → payment reversed ──');
+  await call('POST','/pay',{ref:'u-'+id,from_account:'citizen-'+id,to_account:'rogue',
+    amount:300,region:'in_upi'});
+  await call('POST','/consent',{consent_id:'cb-'+id,principal:'citizen-'+id,budget:100});
+  await call('POST','/recall',{ref:'u-'+id,consent_id:'cb-'+id});
+  await call('GET',`/accounts/citizen-${id}`);
+}
+async function demoDisputePair(){
+  const id = uid();
+  note('── DISPUTE TAXONOMY · valid code accepted, off-region code rejected ──');
+  await call('POST','/dispute',{ref:'d-'+id,region:'in_upi',reason_code:'goods_not_received'});
+  await call('POST','/dispute',{ref:'d-'+id,region:'in_upi',reason_code:'pix_med_return'}, true);
+}
+async function demoDiscovery(){
+  note('── DISCOVERY · what an agent sees at GET / (Accept: */*) ──');
+  await call('GET','/');
+  await call('GET','/stats');
+}
+
+// ---- trust-spectrum lane demos ----------------------------------------------------
+async function demoDelegate(){
+  const id = uid();
+  note('── SPECTRUM · agent→sub-agent: attenuated delegation ──');
+  await call('POST','/consent',{consent_id:'r-'+id, principal:'orch-'+id, budget:1000});
+  await call('POST','/m2m/delegate',{delegation_id:'sd-'+id, parent_consent_id:'r-'+id,
+    agent:'sub-'+id, budget:300});
+  await call('GET',`/m2m/delegation/sd-${id}`);
+  note('attenuation holds — asking for 500 from a 300 parent is refused:');
+  await call('POST','/m2m/delegate',{delegation_id:'sd2-'+id, parent_consent_id:'sd-'+id,
+    agent:'sub2-'+id, budget:500}, true);
+}
+async function demoHandshake(){
+  const id = uid();
+  note('── SPECTRUM · agent↔agent: one-call pact between strangers ──');
+  await call('POST','/m2m/handshake',{pact_id:'hs-'+id, buyer_agent:'buyer-'+id,
+    seller_agent:'seller-'+id, buyer_prefs:['eu_sepa','br_pix'],
+    seller_prefs:['br_pix','in_upi'], amount:150});
+  note('seller posts the delivery proof; escrow releases:');
+  await call('POST',`/escrow/pact-hs-${id}/deliver`,{proof:'delivered'});
+  await call('POST',`/escrow/pact-hs-${id}/release`);
+}
+
+// ---- M2M: machine-to-machine agentic trade ---------------------------------------
+async function demoM2M(){
+  const id = uid();
+  note('── M2M · agent-to-agent trade, no human involved ──');
+  note('1) root mandate: the orchestrator agent\'s own spending policy');
+  await call('POST','/consent',{consent_id:'root-'+id, principal:'orchestrator-'+id, budget:1000});
+  note('2) attenuated delegation: 300 of the 1000 goes to a shopper bot');
+  await call('POST','/m2m/delegate',{delegation_id:'d-'+id, parent_consent_id:'root-'+id,
+    agent:'shopper-'+id, budget:300});
+  note('3) one-call handshake: Nash region + mandate check + funded escrow');
+  await call('POST','/m2m/handshake',{pact_id:'p-'+id, buyer_agent:'shopper-'+id,
+    seller_agent:'seller-'+id, buyer_prefs:['eu_sepa','br_pix'],
+    seller_prefs:['br_pix','in_upi'], amount:250, delegation_id:'d-'+id});
+  note('4) seller delivers; the ordinary escrow endpoints finish the trade');
+  await call('POST',`/escrow/pact-p-${id}/deliver`,{proof:'delivered'});
+  await call('POST',`/escrow/pact-p-${id}/release`);
+  await call('GET',`/m2m/pact/p-${id}`);
+  note('✓ complete: region agreed, mandate enforced, paid after delivery proof');
+}
+async function atkM2M(){
+  const id = uid();
+  note('── M2M ATTACKS · both refused before any funds move ──');
+  await call('POST','/consent',{consent_id:'root-'+id, principal:'orch-'+id, budget:300});
+  note('sub-agent asks for MORE authority than its delegator has (500 > 300):');
+  await call('POST','/m2m/delegate',{delegation_id:'greedy-'+id, parent_consent_id:'root-'+id,
+    agent:'greedy-bot', budget:500}, true);
+  note('two agents with no shared jurisdiction try to form a pact:');
+  await call('POST','/m2m/handshake',{pact_id:'x-'+id, buyer_agent:'a-'+id,
+    seller_agent:'b-'+id, buyer_prefs:['br_pix'], seller_prefs:['us_fednow'],
+    amount:100}, true);
+}
+
+// ---- x402 on-rail payments -----------------------------------------------------
+function x402Header(payer, value, nonce, consentId){
+  const p = {x402Version:1, scheme:'exact', network:'base-sepolia-sim',
+    payload:{authorization:{from:payer, to:'tvist-treasury', value:value,
+      validAfter:0, validBefore:9999999999, nonce:nonce}, signature:'sim-'+nonce},
+    extra: consentId ? {consent_id: consentId} : {}};
+  return btoa(JSON.stringify(p));
+}
+async function x402Fetch(path, header, expectFail){
+  logReq('GET', path, header ? {'X-PAYMENT':'(base64 EIP-3009 authorization)'} : null);
+  try{
+    const r = await fetch(path, {headers: header ? {'X-PAYMENT': header} : {}});
+    const data = await r.json();
+    logRes(r.status, data, expectFail ? !r.ok : r.ok);
+    const pr = r.headers.get('X-PAYMENT-RESPONSE');
+    if (pr){
+      const receipt = JSON.parse(atob(pr));
+      con.innerHTML += `<span class="g">  X-PAYMENT-RESPONSE: ${esc(JSON.stringify(receipt))}</span>\n`;
+      con.scrollTop = con.scrollHeight;
+    }
+    refreshStats();
+    return r.status;
+  }catch(e){ logRes('ERR', String(e), false); return 0; }
+}
+async function demoX402(){
+  const id = uid(), payer = 'agent-'+id;
+  note('── x402 · HTTP-native agent payment: 402 → sign → pay → 200 ──');
+  note('1) ask without payment — the rail answers 402 with the requirements:');
+  await x402Fetch('/x402/resource/market-report', null, true);
+  note('2) retry with a signed X-PAYMENT header (EIP-3009-shaped, sandbox-signed):');
+  await x402Fetch('/x402/resource/market-report', x402Header(payer, 25, 'n-'+id));
+  note('✓ resource delivered + on-rail receipt; settlement is IRREVOCABLE (stablecoin_x402)');
+}
+async function atkX402(){
+  const id = uid(), payer = 'agent-'+id, n = 'n-'+id;
+  note('── x402 ATTACKS · replay + over-consent, both refused on-rail ──');
+  const h = x402Header(payer, 25, n);
+  await x402Fetch('/x402/resource/market-report', h);
+  note('replay the SAME signed payment (double-spend attempt):');
+  await x402Fetch('/x402/resource/market-report', h, true);
+  note('principal capped this agent at 10 — over-budget x402 payment refused:');
+  await call('POST','/consent',{consent_id:'xcap-'+id, principal:payer, budget:10});
+  await x402Fetch('/x402/resource/market-report', x402Header(payer, 25, 'n2-'+id, 'xcap-'+id), true);
+}
+
+// ---- persona + use-case demos ----------------------------------------------------
+async function demoPrincipal(){
+  const id = uid();
+  note('── PERSONA · the principal: refusal up front, recall after ──');
+  await call('POST','/consent',{consent_id:'c-'+id,principal:'me-'+id,budget:500});
+  note('1) the 900-credit overreach is refused up front…');
+  await call('POST','/pay',{ref:'x-'+id,from_account:'me-'+id,to_account:'shop',
+    amount:900,region:'in_upi',consent_id:'c-'+id}, true);
+  note('2) …and a breach that slipped through is recalled:');
+  await call('POST','/pay',{ref:'y-'+id,from_account:'me-'+id,to_account:'rogue',
+    amount:300,region:'in_upi'});
+  await call('POST','/recall',{ref:'y-'+id,consent_id:'c-'+id}, true); // 300<=500 → refused (no breach)
+  await call('POST','/consent',{consent_id:'tight-'+id,principal:'me-'+id,budget:100});
+  await call('POST','/recall',{ref:'y-'+id,consent_id:'tight-'+id});
+}
+async function demoProvider(){
+  const id = uid();
+  note('── PERSONA · the provider: funds visible in escrow before shipping ──');
+  await call('POST','/escrow',{escrow_id:'e-'+id,payer:'buyer-'+id,payee:'provider-'+id,
+    amount:350,region:'sg_fast',condition_expected:'shipped'});
+  await call('GET',`/escrow/e-${id}`);
+  note('provider ships, posts proof, gets paid instantly:');
+  await call('POST',`/escrow/e-${id}/deliver`,{proof:'shipped'});
+  await call('POST',`/escrow/e-${id}/release`);
+}
+async function demoDigiDoot(){
+  const id = uid();
+  note('── USE CASE · DigiDoot: citizen agent on UPI with explicit consent ──');
+  await call('POST','/regions/recommend',{client_prefs:['in_upi'],agent_prefs:['in_upi']});
+  await call('POST','/consent',{consent_id:'aadhaar-'+id,principal:'citizen-'+id,budget:500});
+  note('welfare payment within consent:');
+  await call('POST','/pay',{ref:'w-'+id,from_account:'citizen-'+id,to_account:'welfare-portal',
+    amount:300,region:'in_upi',consent_id:'aadhaar-'+id});
+  note('rogue charge outside any consent — recalled under UPI:');
+  await call('POST','/pay',{ref:'r-'+id,from_account:'citizen-'+id,to_account:'rogue',
+    amount:400,region:'in_upi'});
+  await call('POST','/consent',{consent_id:'chk-'+id,principal:'citizen-'+id,budget:100});
+  await call('POST','/recall',{ref:'r-'+id,consent_id:'chk-'+id});
+}
+async function demoCrossBorder(){
+  note('── USE CASE · cross-border: EU client × BR seller → Nash lands on Pix ──');
+  await call('POST','/regions/recommend',{client_prefs:['eu_sepa','br_pix'],agent_prefs:['br_pix','eu_sepa']});
+  note('both sides now know the regime before a credit moves:');
+  await call('GET','/regions');
+}
+async function demoSubscription(){
+  const id = uid();
+  note('── USE CASE · subscription guardrail: renewal above budget is refused ──');
+  await call('POST','/consent',{consent_id:'sub-'+id,principal:'human-'+id,budget:250});
+  await call('POST','/pay',{ref:'m1-'+id,from_account:'human-'+id,to_account:'saas',
+    amount:200,region:'eu_sepa',consent_id:'sub-'+id});
+  note('price hike: 300 > 250 standing consent —');
+  await call('POST','/pay',{ref:'m2-'+id,from_account:'human-'+id,to_account:'saas',
+    amount:300,region:'eu_sepa',consent_id:'sub-'+id}, true);
+}
+
+// ---- attacks -----------------------------------------------------------------
+async function atkNoOverlap(){
+  note('── ATTACK · parties with no shared jurisdiction ──');
+  await call('POST','/regions/recommend',{client_prefs:['br_pix'],agent_prefs:['us_fednow']}, true);
+  note('agreed_region null → the deal must not proceed');
+}
+async function atkConsent(){
+  const id = uid();
+  note('── ATTACK · charge 900 against a 500 consent ──');
+  await call('POST','/consent',{consent_id:'c-'+id,principal:'human-'+id,budget:500});
+  await call('POST','/pay',{ref:'p-'+id,from_account:'human-'+id,to_account:'shop',
+    amount:900,region:'in_upi',consent_id:'c-'+id}, true);
+}
+async function atkEscrow(){
+  const id = uid();
+  note('── ATTACK · release escrow without delivering ──');
+  await call('POST','/escrow',{escrow_id:'e-'+id,payer:'human-'+id,payee:'ghost',
+    amount:200,region:'br_pix',condition_expected:'delivered'});
+  await call('POST',`/escrow/e-${id}/release`, null, true);
+}
+async function atkFednow(){
+  const id = uid();
+  note('── ATTACK · recall on FedNow (regime forbids recall) ──');
+  await call('POST','/pay',{ref:'f-'+id,from_account:'bob-'+id,to_account:'scam',
+    amount:300,region:'us_fednow'});
+  await call('POST','/consent',{consent_id:'cb-'+id,principal:'bob-'+id,budget:100});
+  await call('POST','/recall',{ref:'f-'+id,consent_id:'cb-'+id}, true);
+}
+async function atkClawback(){
+  const id = uid();
+  note('── ATTACK · claw back a legitimate in-mandate payment ──');
+  await call('POST','/consent',{consent_id:'ok-'+id,principal:'bob-'+id,budget:500});
+  await call('POST','/pay',{ref:'u-'+id,from_account:'bob-'+id,to_account:'shop',
+    amount:300,region:'in_upi',consent_id:'ok-'+id});
+  await call('POST','/recall',{ref:'u-'+id,consent_id:'ok-'+id}, true);
+}
+async function atkReason(){
+  note('── ATTACK · Pix reason code under the UPI regime ──');
+  await call('POST','/dispute',{ref:'d-'+uid(),region:'in_upi',reason_code:'pix_med_return'}, true);
+}
+
+// ---- gate table self-verification ----------------------------------------------
+async function verifyGate(n){
+  const btn = document.getElementById('v' + n);
+  btn.textContent = '… verifying live';
+  let ok = false;
+  if (n === 1){ const r = await callSilent('POST','/regions/recommend',
+      {client_prefs:['br_pix'],agent_prefs:['us_fednow']}); ok = r.data && r.data.agreed_region === null; }
+  if (n === 2){ const id = uid();
+    await callSilent('POST','/consent',{consent_id:'c-'+id,principal:'h-'+id,budget:500});
+    const r = await callSilent('POST','/pay',{ref:'p-'+id,from_account:'h-'+id,to_account:'shop',
+      amount:900,region:'in_upi',consent_id:'c-'+id}); ok = r.status === 403; }
+  if (n === 3){ const id = uid();
+    await callSilent('POST','/escrow',{escrow_id:'e-'+id,payer:'h-'+id,payee:'ghost',
+      amount:100,region:'br_pix',condition_expected:'delivered'});
+    const r = await callSilent('POST',`/escrow/e-${id}/release`); ok = r.status === 403; }
+  if (n === 4){ const id = uid();
+    await callSilent('POST','/consent',{consent_id:'ok-'+id,principal:'b-'+id,budget:500});
+    await callSilent('POST','/pay',{ref:'u-'+id,from_account:'b-'+id,to_account:'shop',
+      amount:300,region:'in_upi',consent_id:'ok-'+id});
+    const r = await callSilent('POST','/recall',{ref:'u-'+id,consent_id:'ok-'+id});
+    ok = r.data && r.data.reversed === false; }
+  btn.outerHTML = ok
+    ? `<span class="ok">✓ verified live just now</span>`
+    : `<span class="no">✗ unexpected — see console</span>`;
+  refreshStats();
+}
+async function callSilent(m, p, body){
+  try{ const r = await fetch(p, {method:m, headers:{'content-type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined});
+    return {status: r.status, data: await r.json()}; }
+  catch(e){ return {status:0, data:null}; }
+}
+
+// ---- jurisdiction globe (orthographic projection, pure SVG) --------------------
+const GEO = {   // region key -> [lat, lon] of the regulator's seat
+  eu_sepa:[50.8,4.4], uk_fps:[51.5,-0.1], nordic:[59.3,18.1], ch_twint:[46.9,7.4],
+  br_pix:[-15.8,-47.9], mx_spei:[19.4,-99.1], us_fednow:[38.9,-77.0], us_rtp:[40.7,-74.0],
+  ca_interac:[45.4,-75.7], in_upi:[28.6,77.2], sg_fast:[1.35,103.8], au_npp:[-33.9,151.2],
+  jp_zengin:[35.7,139.7], hk_fps:[22.3,114.2], ae_aani:[24.5,54.4], sa_sarie:[24.7,46.7],
+  za_payshap:[-26.2,28.0], ng_nip:[6.5,3.4], ke_mpesa:[-1.3,36.8], cn_ibps:[39.9,116.4],
+};
+const LOFF = {  // label offsets so close markers stay readable
+  us_rtp:[8,7], us_fednow:[8,17], ca_interac:[8,-6], uk_fps:[-46,-6], eu_sepa:[8,-2],
+  ch_twint:[8,12], nordic:[8,-2], sa_sarie:[-56,12], ae_aani:[8,-2], hk_fps:[8,-4],
+  cn_ibps:[8,-2], jp_zengin:[8,12],
+};
+const G = {rot:{l:-10, p:-18}, R:192, C:210, sel:null, nash:new Set()};
+const D2R = Math.PI/180;
+function gproj(lat, lon){
+  const f=lat*D2R, l=lon*D2R, f0=-G.rot.p*D2R, l0=-G.rot.l*D2R;
+  const cosc = Math.sin(f0)*Math.sin(f) + Math.cos(f0)*Math.cos(f)*Math.cos(l-l0);
+  return {x: G.C + G.R*Math.cos(f)*Math.sin(l-l0),
+          y: G.C - G.R*(Math.cos(f0)*Math.sin(f) - Math.sin(f0)*Math.cos(f)*Math.cos(l-l0)),
+          v: cosc > 0};
+}
+function gpath(pts){
+  let d='', pen=false;
+  for (const p of pts){
+    if (p.v){ d += (pen?'L':'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1); pen=true; }
+    else pen=false;
+  }
+  return d;
+}
+function drawGlobe(){
+  const svg = document.getElementById('globe'); if (!svg) return;
+  let h = `<circle class="gsphere" cx="${G.C}" cy="${G.C}" r="${G.R}"/>`;
+  for (let lon=-180; lon<180; lon+=30){
+    const pts=[]; for (let lat=-88; lat<=88; lat+=4) pts.push(gproj(lat,lon));
+    h += `<path class="gline" d="${gpath(pts)}"/>`;
+  }
+  for (let lat=-60; lat<=60; lat+=30){
+    const pts=[]; for (let lon=-180; lon<=180; lon+=4) pts.push(gproj(lat,lon));
+    h += `<path class="gline" d="${gpath(pts)}"/>`;
+  }
+  for (const [k, [lat,lon]] of Object.entries(GEO)){
+    const p = gproj(lat,lon); if (!p.v) continue;
+    const cls = 'gmark' + (G.sel===k?' sel':'') + (G.nash.has(k)?' nash':'');
+    const [ox, oy] = LOFF[k] || [8, 3];
+    h += `<circle class="${cls}" data-k="${k}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${G.sel===k?8:5.5}"><title>${k}</title></circle>`
+       + `<text class="glab" x="${(p.x+ox).toFixed(1)}" y="${(p.y+oy).toFixed(1)}">${k}</text>`;
+  }
+  svg.innerHTML = h;
+}
+(function initGlobe(){
+  const svg = document.getElementById('globe'); if (!svg) return;
+  let drag = null;
+  svg.addEventListener('pointerdown', e => {
+    drag = {x:e.clientX, y:e.clientY, moved:0}; svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+    drag.x=e.clientX; drag.y=e.clientY; drag.moved += Math.abs(dx)+Math.abs(dy);
+    G.rot.l += dx*0.5; G.rot.p = Math.max(-80, Math.min(80, G.rot.p + dy*0.5));
+    drawGlobe();
+  });
+  svg.addEventListener('pointerup', e => {
+    const wasClick = drag && drag.moved < 6; drag = null;
+    const t = e.target.closest && e.target.closest('[data-k]');
+    if (wasClick && t) selectRegion(t.dataset.k);
+  });
+  drawGlobe();
+  suggestStart();   // GET /regions/suggest picks the initial selection
+})();
+
+// ---- suggested starting jurisdiction (GET /regions/suggest) ---------------------
+async function suggestStart(){
+  const box = document.getElementById('suggestbox');
+  let start = 'in_upi';   // fallback if the suggest call fails
+  try{
+    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || '';
+    const d = await (await fetch('/regions/suggest?tz=' + encodeURIComponent(tz))).json();
+    window._suggest = d.suggested_region;
+    start = d.suggested_region;
+    box.innerHTML =
+      `<button class="btn mini gchip" id="suggestbtn" data-k="${esc(d.suggested_region)}" ` +
+      `onclick="toggleSuggest()">📍 suggested start: ${esc(d.suggested_region)}</button> ` +
+      `<span>from ${esc(d.method)} · your IP: ${esc(d.client_ip)} (echoed, not geolocated) · ` +
+      `click to select, click again to clear</span>`;
+  }catch(e){ box.textContent = ''; }
+  if (GEO[start]){   // rotate the globe so the starting marker faces front
+    G.rot.l = -GEO[start][1];
+    G.rot.p = Math.max(-80, Math.min(80, -GEO[start][0]));
+  }
+  selectRegion(start, false);
+}
+function toggleSuggest(){
+  const k = window._suggest; if (!k) return;
+  if (G.sel === k){   // click out: clear the selection
+    G.sel = null; drawGlobe();
+    document.querySelectorAll('.gchip').forEach(b => b.classList.remove('on'));
+    document.getElementById('maptitle').textContent = 'No jurisdiction selected';
+    const out = document.getElementById('mapout');
+    out.className = 'result'; out.textContent = 'click a marker on the globe, or a chip…';
+    document.getElementById('clauses').innerHTML = '';
+  } else selectRegion(k);
+}
+
+async function selectRegion(k, scroll = true){
+  G.sel = k; drawGlobe();
+  document.querySelectorAll('.gchip').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+  const esel = document.getElementById('esregion');   // the escrow builder follows the choice
+  if (esel && [...esel.options].some(o => o.value === k)){ esel.value = k; escInfo(); }
+  const title = document.getElementById('maptitle'), out = document.getElementById('mapout'),
+        cl = document.getElementById('clauses');
+  if (scroll){   // if the details panel is off-screen (stacked layout), bring it into view
+    const r = title.closest('.card').getBoundingClientRect();
+    if (r.top > innerHeight * 0.75 || r.bottom < 90)
+      title.closest('.card').scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+  out.className='result'; out.textContent = `loading /regions/${k}/legal…`; cl.innerHTML='';
+  try{
+    const d = await (await fetch(`/regions/${k}/legal`)).json();
+    title.textContent = d.label;
+    out.innerHTML =
+      `legal system: <b style="color:var(--teal)">${esc(d.legal_system)}</b>` +
+      ` · regulator: ${esc(d.regulator)}<br>` +
+      `recall: <span class="${d.recall_allowed?'ok':'no'}">${d.recall_allowed?'allowed':'not allowed'}</span>` +
+      (d.recall_window_ticks ? ` · window ${d.recall_window_ticks} ticks` : '');
+    cl.innerHTML =
+      '<p style="color:var(--mut);font-size:13px;margin:12px 0 2px">Key clauses — click one to highlight it:</p>' +
+      d.reason_code_linkage.map(l =>
+        `<div class="clause" onclick="hlClause(this)"><code>${esc(l.reason_code)}</code> ` +
+        `<b>${esc(l.label)}</b><div class="basis">${esc(l.operative_basis)}</div></div>`).join('') +
+      '<p style="color:var(--mut);font-size:13px;margin:12px 0 2px">Legal instruments (official sources):</p>' +
+      d.instruments.map(i =>
+        `<div class="clause" onclick="hlClause(this)"><b>${esc(i.name)}</b> ` +
+        `<span style="color:var(--mut)">(${esc(i.role)})</span>` +
+        `<div class="basis">${esc(i.citation)} — <a href="${esc(i.url)}" target="_blank" rel="noopener">official source ↗</a></div></div>`).join('');
+  }catch(e){ out.className='result bad'; out.textContent = String(e); }
+}
+function hlClause(el){
+  el.parentElement.querySelectorAll('.clause.hl').forEach(x => { if (x !== el) x.classList.remove('hl'); });
+  el.classList.toggle('hl');
+}
+
+// ---- Nash cooperation visualizer: 1-1, 1-n, n-n ---------------------------------
+const NASH_MODES = {
+  '1-1': {buyers:[{id:'client', prefs:['eu_sepa','br_pix','in_upi']}],
+          sellers:[{id:'agent', prefs:['in_upi','br_pix','eu_sepa']}]},
+  '1-n': {buyers:[{id:'buyer', prefs:['eu_sepa','br_pix','in_upi']}],
+          sellers:[{id:'seller-1', prefs:['br_pix','mx_spei']},
+                   {id:'seller-2', prefs:['in_upi','sg_fast']},
+                   {id:'seller-3', prefs:['us_fednow']}]},
+  'n-n': {buyers:[{id:'buyer-1', prefs:['eu_sepa','br_pix']},
+                  {id:'buyer-2', prefs:['in_upi','sg_fast','br_pix']},
+                  {id:'buyer-3', prefs:['us_fednow','us_rtp','ca_interac']}],
+          sellers:[{id:'seller-1', prefs:['br_pix','mx_spei','eu_sepa']},
+                   {id:'seller-2', prefs:['sg_fast','in_upi']},
+                   {id:'seller-3', prefs:['ca_interac','us_rtp']}]},
+};
+async function runNash(mode){
+  document.querySelectorAll('.modebtn').forEach(b => b.classList.toggle('on', b.dataset.m === mode));
+  const m = NASH_MODES[mode], svg = document.getElementById('nashsvg'),
+        note = document.getElementById('nashnote');
+  const pairs = [];
+  m.buyers.forEach((b,i) => m.sellers.forEach((s,j) => pairs.push({b,s,i,j})));
+  note.className='result'; note.textContent = `sending ${pairs.length} POST /regions/recommend call(s)…`;
+  const res = await Promise.all(pairs.map(p =>
+    fetch('/regions/recommend', {method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({client_prefs:p.b.prefs, agent_prefs:p.s.prefs})})
+      .then(r => r.json()).catch(() => null)));
+  const W = 960, rows = Math.max(m.buyers.length, m.sellers.length), H = rows*92 + 40;
+  const yPos = (n,i) => H/2 + (i-(n-1)/2)*92;
+  let h = '';
+  pairs.forEach((p, idx) => {
+    const y1 = yPos(m.buyers.length, p.i), y2 = yPos(m.sellers.length, p.j);
+    const r = res[idx], ok = r && r.agreed_region;
+    h += `<path d="M250 ${y1} C 470 ${y1}, 490 ${y2}, 710 ${y2}" fill="none" `
+       + `stroke="${ok?'#2dd4bf':'#f87171'}" stroke-width="1.6"${ok?'':' stroke-dasharray="5 5"'}/>`;
+    const t = 0.32 + 0.18*p.i, lx = 250 + 460*t, ly = y1 + (y2-y1)*t - 5;
+    h += `<text x="${lx}" y="${ly}" text-anchor="middle" fill="${ok?'#2dd4bf':'#f87171'}" `
+       + `font-size="11" font-weight="700">${ok ? r.agreed_region : 'no shared region'}</text>`;
+  });
+  const box = (x, y, id, prefs) =>
+    `<rect x="${x}" y="${y-26}" width="230" height="52" rx="10" fill="#151d3f" stroke="#26305e"/>` +
+    `<text x="${x+14}" y="${y-5}" fill="#e6eaf6" font-size="12.5" font-weight="600">🤖 ${id}</text>` +
+    `<text x="${x+14}" y="${y+13}" fill="#93a0c4" font-size="9.5">prefs: ${prefs.join(' › ')}</text>`;
+  m.buyers.forEach((b,i) => h += box(20, yPos(m.buyers.length,i), b.id, b.prefs));
+  m.sellers.forEach((s,j) => h += box(710, yPos(m.sellers.length,j), s.id, s.prefs));
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = h;
+  const agreed = [...new Set(res.filter(r => r && r.agreed_region).map(r => r.agreed_region))];
+  const refused = res.filter(r => !r || !r.agreed_region).length;
+  G.nash = new Set(agreed); drawGlobe();
+  note.className='result';
+  note.innerHTML = `${pairs.length} live call(s) — agreed regions: ` +
+    (agreed.length ? agreed.map(a => `<b style="color:var(--coral)">${esc(a)}</b>`).join(', ') : 'none') +
+    (refused ? ` · ${refused} pair(s) refused (no shared region)` : '') +
+    ' — agreed regions are highlighted red on the globe.';
+}
+if (document.getElementById('nashsvg')) runNash('1-1');
+
+// ---- navigation logic: scrollspy, mobile menu, back-to-top ---------------------
+const menuEl = document.getElementById('menu');
+const burgerEl = document.getElementById('burger');
+function toggleMenu(force){
+  const open = force !== undefined ? force : !menuEl.classList.contains('open');
+  menuEl.classList.toggle('open', open);
+  burgerEl.setAttribute('aria-expanded', String(open));
+  burgerEl.textContent = open ? '✕' : '☰';
+}
+// selecting an item (or any anchor) closes the mobile menu
+menuEl.querySelectorAll('a').forEach(a => a.addEventListener('click', () => toggleMenu(false)));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleMenu(false); });
+document.addEventListener('click', e => {
+  if (menuEl.classList.contains('open') && !menuEl.contains(e.target) && e.target !== burgerEl)
+    toggleMenu(false);
+});
+
+// scrollspy: highlight the section currently in view; toggle back-to-top
+const spyLinks = [...menuEl.querySelectorAll('a.item')];
+const spyIds = spyLinks.map(a => a.getAttribute('href').slice(1));
+let spyTick = false;
+function spy(){
+  spyTick = false;
+  const y = scrollY + 100;
+  let cur = '';
+  for (const id of spyIds){
+    const el = document.getElementById(id);
+    if (el && el.offsetTop <= y) cur = id;
+  }
+  // past the last section's end (footer) → keep Downloads active
+  spyLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + cur));
+  document.getElementById('totop').classList.toggle('show', scrollY > 600);
+}
+addEventListener('scroll', () => { if (!spyTick){ spyTick = true; requestAnimationFrame(spy); } },
+  {passive: true});
+addEventListener('resize', spy, {passive: true});
+spy();
+</script>
+</body>
+</html>
