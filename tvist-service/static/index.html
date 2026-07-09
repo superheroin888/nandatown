@@ -1616,7 +1616,11 @@ function drawGlobe(){
   const svg = document.getElementById('globe'); if (!svg) return;
   let drag = null;
   svg.addEventListener('pointerdown', e => {
-    drag = {x:e.clientX, y:e.clientY, moved:0}; svg.setPointerCapture(e.pointerId);
+    // remember the marker under the pointer NOW: once the pointer is
+    // captured, the pointerup event retargets to the svg itself
+    const t = e.target.closest && e.target.closest('[data-k]');
+    drag = {x:e.clientX, y:e.clientY, moved:0, k: t ? t.dataset.k : null};
+    try { svg.setPointerCapture(e.pointerId); } catch (err) {}
   });
   svg.addEventListener('pointermove', e => {
     if (!drag) return;
@@ -1625,10 +1629,10 @@ function drawGlobe(){
     G.rot.l += dx*0.5; G.rot.p = Math.max(-80, Math.min(80, G.rot.p + dy*0.5));
     drawGlobe();
   });
-  svg.addEventListener('pointerup', e => {
-    const wasClick = drag && drag.moved < 6; drag = null;
-    const t = e.target.closest && e.target.closest('[data-k]');
-    if (wasClick && t) selectRegion(t.dataset.k);
+  svg.addEventListener('pointerup', () => {
+    const wasClick = drag && drag.moved < 10, k = drag && drag.k;
+    drag = null;
+    if (wasClick && k) selectRegion(k);
   });
   drawGlobe();
   suggestStart();   // GET /regions/suggest picks the initial selection
