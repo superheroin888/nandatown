@@ -1,325 +1,558 @@
-# Tvist API — escrow, consent & dispute for AI agents
+# Tvist API
 
-## What this service is
+Escrow, consent enforcement, jurisdiction agreement, recall, and law-cited
+disputes for AI agents that send payments — one no-auth HTTP API.
 
-Tvist is an HTTP API for AI agents that send payments on behalf of a principal
-(a human, or another agent). It provides five checks that run before or after a
-payment. Each check is one or two endpoints:
+Base URL:
 
-1. **Jurisdiction selection.** Both parties submit ranked lists of acceptable
-   regions. The service returns one agreed region (the Nash bargaining
-   solution over both rankings), or `null` if the lists do not overlap.
-   `null` means: do not transact.
-2. **Consent enforcement.** The principal's spending mandate — a budget and an
-   optional merchant allowlist — is stored before the agent pays. Every payment
-   that references the mandate is checked against it. A payment above the
-   budget, or to a merchant not on the allowlist, is refused with `403` before
-   any funds move.
-3. **Escrow.** Funds leave the payer when the escrow opens. They reach the
-   payee only after a delivery proof is posted that exactly equals the agreed
-   condition string. Release before delivery is refused with `403`.
-4. **Recall.** A settled payment is reversed only if all three hold:
-   (a) the region's rules allow recall, (b) the request is inside the region's
-   recall window, (c) the payment breached the stored consent. If any of the
-   three fails, the recall is refused and the response says which condition
-   failed.
-5. **Disputes.** A dispute is accepted only if its reason code is valid in the
-   stated region. An accepted dispute returns the legal category and the
-   citation string for that region's law in the response body.
-
-Two further capabilities use the same checks:
-
-- **x402 payments** (step 7): pay for an HTTP resource per request. The server
-  answers `402` with payment requirements; the agent retries with a signed
-  `X-PAYMENT` header; the server settles and returns the resource plus a
-  receipt header. Each payment nonce is accepted once; replays are refused.
-- **Machine-to-machine** (step 8): an agent delegates part of its budget to a
-  sub-agent (a delegation larger than its parent's budget is refused), and two
-  agents set up a trade in one call (region agreement + mandate check + funded
-  escrow).
-
-The same checks apply to all four payment relationships:
-
-| Relationship | What is checked | Endpoints | Step |
-|---|---|---|---|
-| Human → agent | payment stays inside the human's mandate | `/consent` → `/pay` | 2–3 |
-| Agent → sub-agent | delegated budget ≤ delegator's budget | `/m2m/delegate` | 8 |
-| Agent ↔ agent | shared region + mandate + escrow, in one call | `/m2m/handshake` | 8 |
-| Agent → paid resource | per-request payment; replay and budget checked | `/x402/resource/{name}` | 7 |
-
-## Sandbox facts
-
-- Balances are notional credits, not money. Every account is created with
-  100000 credits the first time it is referenced.
-- No authentication, no API keys, no signup.
-- The same base URL serves both audiences: a browser requesting `GET /` with
-  `Accept: text/html` receives an HTML page; any other client receives the
-  JSON endpoint index. The API behaves identically for both. The HTML page is
-  driven by the same endpoints an agent calls: an executive-summary teaser, a
-  live playground, an interactive jurisdiction globe whose per-region clauses
-  load from `GET /regions/{region}/legal`, a Nash cooperation visualizer
-  (1–1, 1–n, n–n; one `POST /regions/recommend` per pair), a suggested-start
-  chip from `GET /regions/suggest`, and downloads for this file and the
-  executive-summary documents.
-- CORS is open (`Access-Control-Allow-Origin: *`); browser-based clients can
-  call every endpoint. The `X-PAYMENT-RESPONSE` header is exposed to browsers.
-- **Not legal advice.** This is a technical demonstration. Legal references
-  cite real primary sources but are engineering mappings, not counsel. See
-  `GET /disclaimer`.
-
-## Base URL
-
-```
 https://robert-escape-que-search.trycloudflare.com
-```
-
-- Health check: `GET /health` returns `{"status":"ok"}`.
-- Endpoint index: `GET /` lists every endpoint with its method and purpose.
-- Machine-readable spec: `GET /openapi.json`. Interactive docs: `GET /docs`.
 
 All request and response bodies are JSON. Errors return `{"error": "<what
-failed>"}` with a 4xx status code.
+failed>"}` with a 4xx status code. Sandbox: balances are notional credits
+(accounts start at 100000 on first use); no auth, no keys, no signup. The same
+base URL serves humans (HTML page) and agents (JSON) — the API is identical.
+Not legal advice: legal references cite real primary sources but are
+engineering mappings (`GET /disclaimer`).
 
 ## Endpoints
 
-| Method & path | Body | Does |
-|---|---|---|
-| `GET /regions` | — | List all 22 jurisdictions. Each entry states: `irrevocable`, `recall_allowed`, `recall_window_ticks`, `rail`, and the valid `reason_codes` |
-| `GET /regions/suggest?tz=<IANA tz>` | — | Suggested starting jurisdiction for the caller, from the `tz` query parameter and the `Accept-Language` header. The caller's IP is echoed for transparency but not geolocated. A convenience default, not a decision — negotiate with `POST /regions/recommend` |
-| `POST /regions/recommend` | `{client_prefs:[...], agent_prefs:[...]}` | Return the Nash-optimal region for both rankings, or `agreed_region: null` if no region appears in both lists |
-| `GET /taxonomy` | — | The dispute taxonomy: 7 legal categories, the mapping from every reason code to its category, and per-region linkage |
-| `GET /regions/{region}/legal` | — | One jurisdiction's legal system, regulator, and legal instruments (statutes and scheme rulebooks, each with a link to the official source), plus the legal basis for each of its reason codes |
-| `GET /spectrum` | — | The four payment relationships and their checks, as structured JSON, ASCII, and Mermaid |
-| `POST /consent` | `{consent_id, principal, budget, merchant_allowlist?}` | Store a spending mandate |
-| `POST /pay` | `{ref, from_account, to_account, amount, region, consent_id?}` | Settle a payment. If `consent_id` is given, the mandate is enforced. The response states whether the payment is irrevocable in that region |
-| `POST /escrow` | `{escrow_id, payer, payee, amount, region, condition_expected}` | Open an escrow and withdraw the amount from the payer |
-| `POST /escrow/{id}/deliver` | `{proof}` | Returns `{delivered:true}` only if `proof` equals `condition_expected` exactly; otherwise `{delivered:false}` (200) and the escrow stays undelivered, so release remains refused |
-| `POST /escrow/{id}/release` | — | Pay the payee. Refused with `403` unless the escrow is delivered |
-| `POST /escrow/{id}/contest` | — | Contest a funded escrow; a contested escrow cannot be released |
-| `POST /escrow/{id}/refund` | — | Return a contested escrow's funds to the payer |
-| `GET /escrow/{id}` | — | Escrow status |
-| `POST /recall` | `{ref, consent_id, current_tick?}` | Reverse a settled payment. Succeeds only if the region allows recall, the window is open, and the payment breached the given consent |
-| `POST /dispute` | `{ref, region, reason_code}` | Accept a dispute only if `reason_code` is valid in `region`. Accepted disputes include `legal_basis` with the citation |
-| `GET /accounts/{name}` | — | Account balance |
-| `POST /m2m/delegate` | `{delegation_id, parent_consent_id, agent, budget, merchant_allowlist?}` | Delegate budget to a sub-agent. Refused with `403` if `budget` exceeds the parent's, or the allowlist is wider than the parent's |
-| `POST /m2m/handshake` | `{pact_id, buyer_agent, seller_agent, buyer_prefs, seller_prefs, amount, delegation_id?}` | One call: agree the region, check the mandate, open and fund an escrow. Refused with `409` if no shared region, `403` if over mandate |
-| `GET /m2m/pact/{id}` | — | Pact status, including its escrow |
-| `GET /m2m/delegation/{id}` | — | Delegation status and its chain to the root consent |
-| `GET /x402/resource/{name}` | `X-PAYMENT` header | Without the header: `402` plus payment requirements. With a valid header: the resource plus an `X-PAYMENT-RESPONSE` receipt header |
-| `POST /x402/verify` | `{resource, payment_header}` | Check an `X-PAYMENT` header without settling |
-| `POST /x402/settle` | `{resource, payment_header}` | Verify and settle an `X-PAYMENT` header on the ledger |
-| `GET /stats` | — | Current counts: accounts, settlements, recalls, escrows, held credits, disputes, x402 settlements, total funds |
-| `GET /disclaimer` | — | The not-legal-advice disclaimer as JSON |
+Every endpoint below shows one real call and the real response it returned.
+IDs (`c-ex`, `e-ex`, ...) must be unique per object — reusing one returns 409;
+replace them with your own.
 
-## How an agent should use this — steps (copy-paste curl)
+### GET /health
 
-Set the base URL once:
+Liveness check.
 
 ```bash
-BASE=https://robert-escape-que-search.trycloudflare.com
+curl -s https://robert-escape-que-search.trycloudflare.com/health
 ```
 
-### Step 1 — agree the governing jurisdiction
+Example response:
 
-Each party lists the regions it accepts, best first. The service returns the
-region that maximises the product of both parties' preference utilities (Nash
-bargaining). This is not simply the client's first choice.
+```json
+{"status": "ok"}
+```
+
+### GET /
+
+Machine-readable index of every endpoint (browsers get an HTML page at the same URL).
 
 ```bash
-curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
+curl -s https://robert-escape-que-search.trycloudflare.com/
+```
+
+Example response:
+
+```json
+{"service": "Tvist API", "what": "Escrow, consent, and dispute layer for AI agents. Notional credits (sandbox).", "skill": "See SKILL.md. OpenAPI at /openapi.json, interactive docs at /docs."}
+```
+
+### GET /stats
+
+Live service counters.
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/stats
+```
+
+Example response:
+
+```json
+{"accounts": 12, "consents": 6, "settlements": 5, "x402_settlements": 2, "recalled": 1, "escrows": {"total": 4, "RELEASED": 2, "REFUNDED": 1, "FUNDED": 1}, "held_credits": 150, "disputes": 1, "delegations": 1, "pacts": 1, "total_funds": 1200000, "regions": 22, "endpoints": 33}
+```
+
+### GET /regions
+
+All 22 jurisdictions with their dispute regimes: irrevocability, recall rules, valid reason codes.
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/regions
+```
+
+Example response:
+
+```json
+{"count": 22, "regions": {"global": {"label": "Ungoverned (permissive default)", "rail": "generic", "irrevocable": true, "recall_allowed": true, "recall_window_ticks": 0, "reason_codes": ["agent_exceeded_mandate", "fraud", "goods_not_received", "mistaken_payment", "not_as_described", "pix_med_return", "recall_request", "recurring_disputed ...}
+```
+
+### GET /regions/suggest?tz={IANA-timezone}
+
+Suggested starting jurisdiction from the caller's timezone and Accept-Language; the IP is echoed, not geolocated.
+
+```bash
+curl -s 'https://robert-escape-que-search.trycloudflare.com/regions/suggest?tz=Asia/Kolkata'
+```
+
+Example response:
+
+```json
+{"suggested_region": "in_upi", "label": "India - UPI (NPCI dispute flows)", "method": "timezone 'Asia/Kolkata'", "client_ip": "127.0.0.1", "signals": {"timezone": "Asia/Kolkata", "accept_language": null}}
+```
+
+### POST /regions/recommend
+
+The Nash-optimal jurisdiction for two ranked preference lists; `agreed_region: null` means no shared region — do not transact.
+
+```bash
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/regions/recommend -H 'content-type: application/json' \
   -d '{"client_prefs":["eu_sepa","br_pix","in_upi"],"agent_prefs":["in_upi","br_pix","eu_sepa"]}'
-# -> {"agreed_region":"br_pix","method":"nash_bargaining","naive_client_first":"eu_sepa", ...}
 ```
 
-If `agreed_region` is `null`, the parties share no acceptable region. Do not
-transact.
+Example response:
 
-### Step 2 — record the principal's consent
+```json
+{"agreed_region": "br_pix", "method": "nash_bargaining", "naive_client_first": "eu_sepa", "regime": {"label": "Brazil - Pix (MED 2.0, 11-day recovery)", "irrevocable": true, "recall_allowed": true, "recall_window_ticks": 11}, "note": "None means the parties share no acceptable region \u2014 do not transact."}
+```
+
+### GET /taxonomy
+
+The dispute taxonomy: 7 legal categories and the mapping from every reason code to its category.
 
 ```bash
-curl -s -X POST $BASE/consent -H 'content-type: application/json' \
-  -d '{"consent_id":"c1","principal":"alice","budget":500}'
-# -> {"consent_id":"c1","stored":true,"budget":500}
+curl -s https://robert-escape-que-search.trycloudflare.com/taxonomy
 ```
 
-### Step 3 — pay within the consent
+Example response:
+
+```json
+{"categories": {"non_performance": {"label": "Non-performance (non-delivery)", "description": "Seller/provider failed to perform the primary obligation.", "civil_law_basis": "Breach of obligation to perform: BGB \u00a7\u00a7275, 323 (DE); Code civil arts. 1217, 1610 (FR); CISG arts. 30, 45, 49.", "c ...}
+```
+
+### GET /regions/{region}/legal
+
+One jurisdiction's legal system, regulator, statutes and rulebooks (official-source links), and the legal basis per reason code.
 
 ```bash
-curl -s -X POST $BASE/pay -H 'content-type: application/json' \
-  -d '{"ref":"p1","from_account":"alice","to_account":"shop","amount":300,"region":"br_pix","consent_id":"c1"}'
-# -> {"ref":"p1","settled":true,"irrevocable":true,"region":"br_pix","payer_balance":99700,"payee_balance":100300}
+curl -s https://robert-escape-que-search.trycloudflare.com/regions/in_upi/legal
 ```
 
-A payment above the mandate is refused with `403` and no funds move:
+Example response:
+
+```json
+{"region": "in_upi", "label": "India - UPI (NPCI dispute flows)", "rail": "upi", "legal_system": "common law", "regulator": "RBI / NPCI"}
+```
+
+### GET /spectrum
+
+The four payment relationships and their checks as JSON, ASCII, and Mermaid.
 
 ```bash
-curl -s -X POST $BASE/pay -H 'content-type: application/json' \
-  -d '{"ref":"p2","from_account":"alice","to_account":"shop","amount":900,"region":"br_pix","consent_id":"c1"}'
-# -> 403 {"error":"payment 900 to shop exceeds consent c1"}
+curl -s https://robert-escape-que-search.trycloudflare.com/spectrum
 ```
 
-### Step 4 — escrow funds until delivery
+Example response:
 
-The order is fixed: open (funds leave the payer) → deliver (proof must equal
-the condition) → release (payee is paid). Release before deliver returns `403`.
+```json
+{"one_gate_logic": ["1 jurisdiction \u2014 Nash-optimal region, agreed before funds move", "2 consent \u2014 mandate/delegation checked before settlement", "3 escrow \u2014 funds release only on delivery proof", "4 resolution \u2014 regime-gated recall + law-c ...}
+```
+
+### POST /consent
+
+Store the principal's spending mandate: a budget and an optional merchant allowlist.
 
 ```bash
-curl -s -X POST $BASE/escrow -H 'content-type: application/json' \
-  -d '{"escrow_id":"e1","payer":"alice","payee":"airline","amount":400,"region":"br_pix","condition_expected":"ticket_issued"}'
-curl -s -X POST $BASE/escrow/e1/release            # -> 403: not delivered yet
-curl -s -X POST $BASE/escrow/e1/deliver -H 'content-type: application/json' -d '{"proof":"ticket_issued"}'
-curl -s -X POST $BASE/escrow/e1/release            # -> 200: payee paid
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/consent -H 'content-type: application/json' \
+  -d '{"consent_id":"c-ex","principal":"alice","budget":500}'
 ```
 
-If the buyer contests a funded escrow (`POST /escrow/e1/contest`), release is
-blocked; `POST /escrow/e1/refund` then returns the funds to the payer.
+Example response:
 
-### Step 5 — recall a payment that breached the mandate
+```json
+{"consent_id": "c-ex", "stored": true, "budget": 500}
+```
 
-Recall succeeds only if the region allows recall AND the payment breached the
-consent. `us_fednow` never allows recall; `in_upi` and `br_pix` do, within
-their windows (`GET /regions` states each window).
+### POST /pay
+
+Settle a payment; if `consent_id` is given the mandate is enforced (a payment outside it returns 403 before funds move).
 
 ```bash
-curl -s -X POST $BASE/consent -H 'content-type: application/json' -d '{"consent_id":"cb","principal":"bob","budget":100}'
-curl -s -X POST $BASE/pay -H 'content-type: application/json' -d '{"ref":"u1","from_account":"bob","to_account":"scam","amount":300,"region":"in_upi"}'
-curl -s -X POST $BASE/recall -H 'content-type: application/json' -d '{"ref":"u1","consent_id":"cb"}'
-# -> {"reversed":true,"reason":"mandate breach recalled"}   (300 > 100 budget = breach)
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/pay -H 'content-type: application/json' \
+  -d '{"ref":"p-ex","from_account":"alice","to_account":"shop","amount":300,"region":"br_pix","consent_id":"c-ex"}'
 ```
 
-A recall of a payment that did not breach the consent returns
-`{"reversed":false,...}` with the reason. Funds stay where they are.
+Example response:
 
-### Step 6 — file a dispute with a region-valid reason code
+```json
+{"ref": "p-ex", "settled": true, "irrevocable": true, "region": "br_pix", "payer_balance": 99700, "payee_balance": 100900}
+```
 
-Valid reason codes per region are listed in `GET /regions`. An accepted
-dispute includes the legal basis and citation for that region:
+### GET /accounts/{name}
+
+Notional balance; accounts start at 100000 credits on first use.
 
 ```bash
-curl -s -X POST $BASE/dispute -H 'content-type: application/json' \
-  -d '{"ref":"u1","region":"in_upi","reason_code":"goods_not_received"}'
-# -> {"accepted":true,"legal_basis":{"category":"non_performance",
-#     "label":"Non-performance (non-delivery)","legal_system":"common law",
-#     "citation":"Breach of contract; total failure of consideration; UCC §2-711 buyer's remedies (US)."}}
-curl -s -X POST $BASE/dispute -H 'content-type: application/json' \
-  -d '{"ref":"u1","region":"in_upi","reason_code":"pix_med_return"}'
-# -> {"accepted":false,...}   (pix_med_return is not a valid code in in_upi)
+curl -s https://robert-escape-que-search.trycloudflare.com/accounts/alice
 ```
 
-Quote `legal_basis.citation` when pursuing the claim. The region's full
-instrument list, with links to official sources, is at
-`GET /regions/{region}/legal`.
+Example response:
 
-### Step 7 — pay for a resource with x402
+```json
+{"account": "alice", "balance": 99700}
+```
 
-The x402 flow has three fixed steps. Sandbox specifics: signatures are the
-string `sim-` followed by the nonce; credits stand in for USDC; the network id
-is `base-sepolia-sim`. x402 settlements are irrevocable (`stablecoin_x402`
-regime): recall is always refused. Use escrow (step 4) or a consent cap
-(below) for protection.
+### POST /escrow
+
+Open and fund an escrow: the amount leaves the payer immediately and is held.
 
 ```bash
-# 7.1  Request without payment. The response is 402 and lists the requirements.
-curl -si $BASE/x402/resource/market-report | head -1     # HTTP/2 402
-curl -s  $BASE/x402/resource/market-report               # {"x402Version":1,"error":"X-PAYMENT header required","accepts":[{"scheme":"exact","network":"base-sepolia-sim","maxAmountRequired":25,"payTo":"tvist-treasury",...}]}
-
-# 7.2  Build the X-PAYMENT header: a base64-encoded JSON object with an
-#      EIP-3009-shaped authorization and a signature. Use a new nonce per payment.
-PAY=$(python3 -c "
-import base64, json, uuid
-n = uuid.uuid4().hex
-p = {'x402Version': 1, 'scheme': 'exact', 'network': 'base-sepolia-sim',
-     'payload': {'authorization': {'from': 'my-agent', 'to': 'tvist-treasury',
-                                   'value': 25, 'validAfter': 0,
-                                   'validBefore': 9999999999, 'nonce': n},
-                 'signature': 'sim-' + n},
-     'extra': {}}
-print(base64.b64encode(json.dumps(p).encode()).decode())")
-
-# 7.3  Retry with the header. The response is the resource; the
-#      X-PAYMENT-RESPONSE header carries the settlement receipt.
-curl -s -D - $BASE/x402/resource/market-report -H "X-PAYMENT: $PAY" | grep -i x-payment-response
-# Sending the SAME header again is refused: each nonce settles once.
-curl -s      $BASE/x402/resource/market-report -H "X-PAYMENT: $PAY"   # -> 402 (replay refused)
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/escrow -H 'content-type: application/json' \
+  -d '{"escrow_id":"e-ex","payer":"alice","payee":"airline","amount":400,"region":"br_pix","condition_expected":"ticket_issued"}'
 ```
 
-Consent enforcement on x402: put the principal's `consent_id` in the `extra`
-object of the payment payload. A payment above that consent's budget is
-refused with `402` before settlement, even though the rail itself is
-irrevocable. To verify a header without settling, use `POST /x402/verify`; to
-settle explicitly, use `POST /x402/settle`.
+Example response:
 
-### Step 8 — delegate to sub-agents and trade agent-to-agent
+```json
+{"escrow_id": "e-ex", "status": "FUNDED", "held": 400}
+```
 
-Delegation rule: a sub-agent's budget must be less than or equal to its
-delegator's budget, and its allowlist (if any) must be a subset of the
-delegator's. A delegation that violates either rule is refused with `403`.
-Every delegation chain traces back to one root consent.
+### POST /escrow/{id}/deliver
 
-Handshake rule: `POST /m2m/handshake` performs three checks in one call —
-(1) region agreement over both preference lists, (2) mandate check against the
-buyer's delegation or consent, (3) escrow opened and funded. If no shared
-region exists it returns `409`; if the amount exceeds the mandate it returns
-`403`. In both cases no funds move.
+Post the delivery proof; `delivered` is true only if the proof equals the agreed condition exactly.
 
 ```bash
-# 8.1  Root mandate: the orchestrator agent's own spending policy.
-curl -s -X POST $BASE/consent  -H 'content-type: application/json' \
-  -d '{"consent_id":"root","principal":"orchestrator-agent","budget":1000}'
-# 8.2  Delegate 300 to a shopper bot. (A request for more than 1000 would return 403.)
-curl -s -X POST $BASE/m2m/delegate -H 'content-type: application/json' \
-  -d '{"delegation_id":"d1","parent_consent_id":"root","agent":"shopper-bot","budget":300}'
-# 8.3  One call sets up the trade: region + mandate + funded escrow.
-curl -s -X POST $BASE/m2m/handshake -H 'content-type: application/json' \
-  -d '{"pact_id":"t1","buyer_agent":"shopper-bot","seller_agent":"seller-agent",
-       "buyer_prefs":["eu_sepa","br_pix"],"seller_prefs":["br_pix","in_upi"],
-       "amount":250,"delegation_id":"d1"}'
-# -> {"agreed_region":"br_pix","status":"ESCROWED","escrow_id":"pact-t1",
-#     "next_steps":["POST /escrow/pact-t1/deliver {proof}","POST /escrow/pact-t1/release"]}
-# 8.4  The standard escrow endpoints finish the trade.
-curl -s -X POST $BASE/escrow/pact-t1/deliver -H 'content-type: application/json' -d '{"proof":"delivered"}'
-curl -s -X POST $BASE/escrow/pact-t1/release
-curl -s $BASE/m2m/pact/t1        # pact + escrow status
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/escrow/e-ex/deliver -H 'content-type: application/json' -d '{"proof":"ticket_issued"}'
 ```
 
-A `delegation_id` is accepted anywhere a `consent_id` is: in `/pay`, in x402
-`extra.consent_id`, and in handshakes. The same enforcement applies.
+Example response:
 
-## Full worked example — an agent books travel for its principal
+```json
+{"escrow_id": "e-ex", "delivered": true}
+```
+
+### POST /escrow/{id}/release
+
+Pay the payee; refused with 403 unless the escrow is delivered and uncontested.
 
 ```bash
-BASE=https://robert-escape-que-search.trycloudflare.com
-# 1. Agree the jurisdiction.
-curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
-  -d '{"client_prefs":["in_upi"],"agent_prefs":["in_upi"]}'          # -> in_upi
-# 2. The principal authorises up to 500.
-curl -s -X POST $BASE/consent -H 'content-type: application/json' \
-  -d '{"consent_id":"trip","principal":"citizen","budget":500}'
-# 3. Escrow the fare; the airline is paid only after the ticket proof lands.
-curl -s -X POST $BASE/escrow -H 'content-type: application/json' \
-  -d '{"escrow_id":"fare","payer":"citizen","payee":"airline","amount":450,"region":"in_upi","condition_expected":"ticket_issued"}'
-curl -s -X POST $BASE/escrow/fare/deliver -H 'content-type: application/json' -d '{"proof":"ticket_issued"}'
-curl -s -X POST $BASE/escrow/fare/release
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/escrow/e-ex/release
 ```
 
-## Rules an agent must follow
+Example response:
 
-1. `ref`, `escrow_id`, `consent_id`, `delegation_id`, and `pact_id` must be
-   unique. Reusing one returns `409`.
-2. Read `GET /regions` before choosing a region or a dispute reason. It states,
-   per region: `irrevocable`, `recall_allowed`, `recall_window_ticks`, and the
-   valid `reason_codes`.
-3. If `POST /regions/recommend` returns `agreed_region: null`, do not transact.
-4. The two region flags mean different things. `irrevocable: true` means the
-   sender cannot reverse a settled payment. Some irrevocable regions still
-   provide a scheme-level recall procedure (`recall_allowed: true`) within a
-   window; `POST /recall` uses that procedure and additionally requires a
-   consent breach. Where `recall_allowed` is `false` (for example `us_fednow`
-   and `stablecoin_x402`), no recall exists at all — use escrow (step 4)
-   instead of direct payment.
-5. Use a fresh nonce for every x402 payment. A reused nonce is refused.
-6. The API is discoverable at runtime: `GET /` and `GET /openapi.json` describe
-   every endpoint. `GET /taxonomy` maps every reason code to one of 7 legal
-   categories; `GET /regions/{region}/legal` gives the statutes, rulebooks, and
-   regulator for a region with links to official sources. Cite the returned
-   `operative_basis` when filing a dispute for a principal.
+```json
+{"escrow_id": "e-ex", "status": "RELEASED", "payee_balance": 100400}
+```
+
+### POST /escrow/{id}/contest
+
+Contest a funded escrow; a contested escrow cannot be released.
+
+```bash
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/escrow/e-ex2/contest
+```
+
+Example response:
+
+```json
+{"escrow_id": "e-ex2", "status": "CONTESTED"}
+```
+
+### POST /escrow/{id}/refund
+
+Refund a contested escrow to the payer.
+
+```bash
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/escrow/e-ex2/refund
+```
+
+Example response:
+
+```json
+{"escrow_id": "e-ex2", "status": "REFUNDED", "payer_balance": 99300}
+```
+
+### GET /escrow/{id}
+
+Escrow status.
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/escrow/e-ex
+```
+
+Example response:
+
+```json
+{"escrow_id": "e-ex", "payer": "alice", "payee": "airline", "amount": 400, "region": "br_pix", "delivered": true, "status": "RELEASED"}
+```
+
+### POST /recall
+
+Reverse a settled payment — only if the region allows recall, the window is open, and the payment breached the consent.
+
+```bash
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/recall -H 'content-type: application/json' \
+  -d '{"ref":"r-ex","consent_id":"cb-ex"}'
+```
+
+Example response:
+
+```json
+{"ref": "r-ex", "reversed": true, "reason": "mandate breach recalled", "payer_balance": 100000}
+```
+
+### POST /dispute
+
+File a dispute; accepted only if the reason code is valid in the region, and the response includes the legal citation.
+
+```bash
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/dispute -H 'content-type: application/json' \
+  -d '{"ref":"d-ex","region":"in_upi","reason_code":"goods_not_received"}'
+```
+
+Example response:
+
+```json
+{"ref": "d-ex", "accepted": true, "reason_code": "goods_not_received", "region": "in_upi", "legal_basis": {"category": "non_performance", "label": "Non-performance (non-delivery)", "legal_system": "common law", "citation": "Breach of contract; total failure of consideration; UCC \u00a72-711 buyer's remedies (US)."}}
+```
+
+### POST /m2m/delegate
+
+Delegate part of a budget to a sub-agent; a delegation larger than its parent's budget is refused with 403.
+
+```bash
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/m2m/delegate -H 'content-type: application/json' \
+  -d '{"delegation_id":"d-ex","parent_consent_id":"root-ex","agent":"shopper-bot","budget":300}'
+```
+
+Example response:
+
+```json
+{"delegation_id": "d-ex", "agent": "shopper-bot", "budget": 300, "depth": 1, "chain": ["d-ex", "root-ex"], "note": "use this id as consent_id on /pay, x402 extra.consent_id, or /m2m/handshake \u2014 the same gates enforce it"}
+```
+
+### POST /m2m/handshake
+
+One call between two agents: agree the region (Nash), check the mandate, open and fund an escrow.
+
+```bash
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/m2m/handshake -H 'content-type: application/json' \
+  -d '{"pact_id":"t-ex","buyer_agent":"shopper-bot","seller_agent":"seller-agent","buyer_prefs":["eu_sepa","br_pix"],"seller_prefs":["br_pix","in_upi"],"amount":250,"delegation_id":"d-ex"}'
+```
+
+Example response:
+
+```json
+{"pact_id": "t-ex", "buyer_agent": "shopper-bot", "seller_agent": "seller-agent", "amount": 250, "agreed_region": "br_pix", "regime": {"label": "Brazil - Pix (MED 2.0, 11-day recovery)", "irrevocable": true, "recall_allowed": true, "recall_window_ticks": 11}, "delegation_id": "d-ex", "escrow_id": "pact-t-ex", "status": "ESCROWED"}
+```
+
+### GET /m2m/pact/{id}
+
+Pact status including its escrow.
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/m2m/pact/t-ex
+```
+
+Example response:
+
+```json
+{"pact_id": "t-ex", "buyer_agent": "shopper-bot", "seller_agent": "seller-agent", "amount": 250, "agreed_region": "br_pix", "regime": {"label": "Brazil - Pix (MED 2.0, 11-day recovery)", "irrevocable": true, "recall_allowed": true, "recall_window_ticks": 11}, "delegation_id": "d-ex", "escrow_id": "pact-t-ex", "status": "ESCROWED"}
+```
+
+### GET /m2m/delegation/{id}
+
+Delegation status and its chain to the root consent.
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/m2m/delegation/d-ex
+```
+
+Example response:
+
+```json
+{"delegation_id": "d-ex", "delegator": "orchestrator", "agent": "shopper-bot", "budget": 300, "depth": 1, "chain": ["d-ex", "root-ex"]}
+```
+
+### GET /x402/resource/{name}
+
+An x402-paid resource: without an X-PAYMENT header it returns 402 with the price; with a valid header it returns the resource plus an X-PAYMENT-RESPONSE receipt.
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/x402/resource/market-report
+```
+
+Example response:
+
+```json
+{"x402Version": 1, "error": "X-PAYMENT header required"}
+```
+
+### POST /x402/verify
+
+Facilitator check: is this X-PAYMENT header valid for the resource? Does not settle.
+
+```bash
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/x402/verify -H 'content-type: application/json' \
+  -d '{"resource":"market-report","payment_header":"<base64 X-PAYMENT>"}'
+```
+
+Example response:
+
+```json
+{"isValid": true, "invalidReason": null, "payer": "my-agent"}
+```
+
+### POST /x402/settle
+
+Facilitator settle: verify the X-PAYMENT header and execute it on the ledger; each nonce settles once.
+
+```bash
+curl -s -X POST https://robert-escape-que-search.trycloudflare.com/x402/settle -H 'content-type: application/json' \
+  -d '{"resource":"market-report","payment_header":"<base64 X-PAYMENT>"}'
+```
+
+Example response:
+
+```json
+{"success": true, "txHash": "0x7b1e10e228126c2b946cb11b69f59fa4480cb6a2437ef278faad4d53dd6396ab", "networkId": "base-sepolia-sim", "payer": "my-agent", "amount": 25, "ref": "x402-139cb3e892cf4d57"}
+```
+
+### GET /disclaimer
+
+The not-legal-advice disclaimer.
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/disclaimer
+```
+
+Example response:
+
+```json
+{"disclaimer": "Technical demonstration only \u2014 a notional-credits sandbox, not a bank, payment institution, or law firm. Legal references cite real primary sources but are engineering-grade mappings, not legal advice; obtain qualified local counsel before relying on them in any jurisdiction."}
+```
+
+### GET /skill.md
+
+This file, served raw (`?download=1` to download).
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/skill.md
+```
+
+Example response:
+
+```
+(this document)
+```
+
+### GET /openapi.json
+
+OpenAPI 3.1 spec for every endpoint.
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/openapi.json
+```
+
+Example response:
+
+```json
+{"openapi": "3.1.0", "info": {"title": "Tvist API", "description": "Escrow, consent, and dispute service for AI agents transacting on irrevocable rails. Notional credits only \u2014 a sandbox, not a b ...}
+```
+
+### GET /docs
+
+Interactive Swagger UI for the API (HTML).
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/docs
+```
+
+Example response:
+
+```
+(HTML page — Swagger UI)
+```
+
+### GET /readme.md
+
+Deployment guide, raw markdown (`?download=1` to download).
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/readme.md
+```
+
+Example response:
+
+```
+# Tvist API — a service AI agents can use on their own
+```
+
+### GET /view/{doc}
+
+`skill` or `readme`, rendered as an HTML page for humans.
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/view/skill
+```
+
+Example response:
+
+```
+(HTML page rendering this file)
+```
+
+### GET /downloads
+
+Lists the downloadable pitch-kit documents and their URLs.
+
+```bash
+curl -s https://robert-escape-que-search.trycloudflare.com/downloads
+```
+
+Example response:
+
+```json
+{"docs": {"SKILL.md": "/skill.md?download=1", "README.md": "/readme.md?download=1", "OpenAPI": "/openapi.json"}, "pitch_kit": {"brief-pdf": {"file": "Tvist-Executive-Brief.pdf", "label": "Executive brief \u2014 one airy page, 60-second read", "url": "/download/brief-pdf"}, "summary-pdf": {"file": "Tvist-Executive-Summary.pdf", "label": "Executive summary \u2014 dense one-pager"
+```
+
+### GET /download/{slug}
+
+One pitch-kit file: `brief-pdf`, `summary-pdf`, `summary-docx`, or `deck-pptx`.
+
+```bash
+curl -s -o tvist-brief.pdf https://robert-escape-que-search.trycloudflare.com/download/brief-pdf
+```
+
+Example response:
+
+```
+(binary PDF, ~4 KB)
+```
+
+## How the agent should use this
+
+1. Check the service is up: `GET /health` returns `{"status":"ok"}`.
+2. Agree the governing jurisdiction before any money moves: `POST
+   /regions/recommend` with both parties' ranked region lists. Use the
+   returned `agreed_region` for every later call. If it is `null`, stop — the
+   parties share no region. (`GET /regions/suggest?tz=<your timezone>` gives a
+   starting suggestion; `GET /regions` lists all 22 regimes.)
+3. Store the principal's mandate: `POST /consent` with a unique `consent_id`,
+   the principal's account name, and the budget.
+4. Pay inside the mandate: `POST /pay` with the `consent_id`. A payment above
+   the budget or to a non-allowlisted merchant is refused with 403 and no
+   funds move.
+5. For goods or services delivered later, use escrow instead of paying
+   directly: `POST /escrow` (funds are held), then after delivery `POST
+   /escrow/{id}/deliver` with a proof exactly equal to `condition_expected`,
+   then `POST /escrow/{id}/release` (pays the payee). Release before
+   delivery returns 403. If the buyer contests (`/contest`), release is
+   blocked and `/refund` returns the funds.
+6. To reverse a bad settled payment: `POST /recall`. It succeeds only if the
+   region allows recall, the window is open, and the payment breached the
+   consent — otherwise it is refused and the response says why.
+7. To file a dispute: `POST /dispute` with a reason code that is valid in the
+   agreed region (listed in `GET /regions`). An accepted dispute returns the
+   legal category and citation to quote.
+8. To pay for a resource per request (x402): `GET /x402/resource/{name}`
+   returns 402 with the price; retry with a base64 `X-PAYMENT` header
+   containing an EIP-3009-shaped authorization with a FRESH nonce and
+   signature `sim-<nonce>` (sandbox). The response includes an
+   `X-PAYMENT-RESPONSE` receipt. Reusing a nonce is refused.
+9. For agent-to-agent trade: `POST /m2m/delegate` gives a sub-agent part of a
+   budget (never more than its parent); `POST /m2m/handshake` agrees the
+   region, checks the mandate, and funds an escrow in one call — then finish
+   with the normal escrow endpoints.
+10. Everything is discoverable at runtime: `GET /` lists all endpoints and
+    `GET /openapi.json` is the machine-readable spec.
