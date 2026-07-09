@@ -1038,14 +1038,18 @@ function logRes(status, data, good){
 function clearCon(){ con.innerHTML = '<span class="c"># cleared</span>'; }
 const uid = () => Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-4);
 
-async function call(m, p, body, expectFail){
+async function call(m, p, body){
   logReq(m, p, body);
   try{
     const r = await fetch(p, {method:m, headers:{'content-type':'application/json'},
       body: body ? JSON.stringify(body) : undefined});
     const data = await r.json();
-    const refused = !r.ok || data.reversed === false || data.accepted === false || data.agreed_region === null;
-    logRes(r.status, data, expectFail ? refused : r.ok && !refused);
+    // color = outcome, exactly as the legend says: green = succeeded,
+    // red = refused (a red refusal under an ATTACK banner is the gate working)
+    const refused = !r.ok || data.reversed === false || data.accepted === false
+      || (data.delivered === false && data.status === undefined)  // deliver refusals, not status reads
+      || data.agreed_region === null;
+    logRes(r.status, data, !refused);
     refreshStats();
     return {status: r.status, data, refused};
   }catch(e){ logRes('ERR', String(e), false); return {status:0, data:null, refused:true}; }
@@ -1237,8 +1241,7 @@ async function escOpen(){
 async function escDeliver(){
   if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
   const proof = document.getElementById('esproof').value.trim();
-  const expectFail = proof !== document.getElementById('escond').value.trim();
-  const r = await call('POST', `/escrow/${_escrow.id}/deliver`, {proof}, expectFail);
+  const r = await call('POST', `/escrow/${_escrow.id}/deliver`, {proof});
   if (r.status === 200 && r.data.delivered === true)
     escSet('delivered — proof matched the condition. Next: release.', true);
   else
@@ -1246,7 +1249,7 @@ async function escDeliver(){
 }
 async function escRelease(){
   if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
-  const r = await call('POST', `/escrow/${_escrow.id}/release`, null, true);
+  const r = await call('POST', `/escrow/${_escrow.id}/release`, null);
   if (r.status === 200) escSet(`RELEASED — payee paid under ${_escrow.region}. Open another to repeat.`, true);
   else escSet(`release refused (${r.status}) — not delivered (or contested)`, false);
 }
@@ -1288,12 +1291,12 @@ async function testApi(){
     amount:300, region:'br_pix', consent_id:'t-'+id});
   check(r.status === 200 && r.data.settled === true, 'pay 300 within 500: expected 200 settled');
   r = await call('POST', '/pay', {ref:'no-'+id, from_account:'tester-'+id, to_account:'shop',
-    amount:900, region:'br_pix', consent_id:'t-'+id}, true);
+    amount:900, region:'br_pix', consent_id:'t-'+id});
   check(r.status === 403, 'pay 900 over 500: expected 403 refusal, funds unmoved');
   r = await call('POST', '/escrow', {escrow_id:'t-'+id, payer:'tester-'+id, payee:'seller',
     amount:100, region:'br_pix', condition_expected:'done'});
   check(r.status === 200, 'escrow open: expected 200 (funds held)');
-  r = await call('POST', `/escrow/t-${id}/release`, null, true);
+  r = await call('POST', `/escrow/t-${id}/release`, null);
   check(r.status === 403, 'release before delivery: expected 403');
   r = await call('POST', `/escrow/t-${id}/deliver`, {proof:'done'});
   check(r.status === 200, 'deliver matching proof: expected 200');
@@ -1326,7 +1329,7 @@ async function demoConsentPair(){
   await call('POST','/pay',{ref:'ok-'+id,from_account:'human-'+id,to_account:'shop',
     amount:300,region:'in_upi',consent_id:'c-'+id});
   await call('POST','/pay',{ref:'no-'+id,from_account:'human-'+id,to_account:'shop',
-    amount:900,region:'in_upi',consent_id:'c-'+id}, true);
+    amount:900,region:'in_upi',consent_id:'c-'+id});
 }
 async function demoEscrowLifecycle(){
   const id = uid();
@@ -1335,16 +1338,20 @@ async function demoEscrowLifecycle(){
   await call('POST','/escrow',{escrow_id:'e-'+id,payer:'human-'+id,payee:'seller',
     amount:250,region:'eu_sepa',condition_expected:'delivered'});
   await call('POST',`/escrow/e-${id}/contest`);
-  await call('POST',`/escrow/e-${id}/release`, null, true);
+  await call('POST',`/escrow/e-${id}/release`, null);
   await call('POST',`/escrow/e-${id}/refund`);
   await call('GET',`/accounts/human-${id}`);
 }
 async function demoBreachRecall(){
   const id = uid();
   note('── RECALL · mandate breach under UPI → payment reversed ──');
+  note('1) the mandate exists first: budget 500, merchant allowlist [shop]');
+  await call('POST','/consent',{consent_id:'cb-'+id,principal:'citizen-'+id,budget:500,
+    merchant_allowlist:['shop']});
+  note('2) a rogue charge settles to a merchant NOT on the allowlist:');
   await call('POST','/pay',{ref:'u-'+id,from_account:'citizen-'+id,to_account:'rogue',
     amount:300,region:'in_upi'});
-  await call('POST','/consent',{consent_id:'cb-'+id,principal:'citizen-'+id,budget:100});
+  note('3) recall against the mandate: payee not allowlisted = breach → reversed');
   await call('POST','/recall',{ref:'u-'+id,consent_id:'cb-'+id});
   await call('GET',`/accounts/citizen-${id}`);
 }
@@ -1352,7 +1359,7 @@ async function demoDisputePair(){
   const id = uid();
   note('── DISPUTE TAXONOMY · valid code accepted, off-region code rejected ──');
   await call('POST','/dispute',{ref:'d-'+id,region:'in_upi',reason_code:'goods_not_received'});
-  await call('POST','/dispute',{ref:'d-'+id,region:'in_upi',reason_code:'pix_med_return'}, true);
+  await call('POST','/dispute',{ref:'d-'+id,region:'in_upi',reason_code:'pix_med_return'});
 }
 async function demoDiscovery(){
   note('── DISCOVERY · what an agent sees at GET / (Accept: */*) ──');
@@ -1370,7 +1377,7 @@ async function demoDelegate(){
   await call('GET',`/m2m/delegation/sd-${id}`);
   note('attenuation holds — asking for 500 from a 300 parent is refused:');
   await call('POST','/m2m/delegate',{delegation_id:'sd2-'+id, parent_consent_id:'sd-'+id,
-    agent:'sub2-'+id, budget:500}, true);
+    agent:'sub2-'+id, budget:500});
 }
 async function demoHandshake(){
   const id = uid();
@@ -1408,11 +1415,11 @@ async function atkM2M(){
   await call('POST','/consent',{consent_id:'root-'+id, principal:'orch-'+id, budget:300});
   note('sub-agent asks for MORE authority than its delegator has (500 > 300):');
   await call('POST','/m2m/delegate',{delegation_id:'greedy-'+id, parent_consent_id:'root-'+id,
-    agent:'greedy-bot', budget:500}, true);
+    agent:'greedy-bot', budget:500});
   note('two agents with no shared jurisdiction try to form a pact:');
   await call('POST','/m2m/handshake',{pact_id:'x-'+id, buyer_agent:'a-'+id,
     seller_agent:'b-'+id, buyer_prefs:['br_pix'], seller_prefs:['us_fednow'],
-    amount:100}, true);
+    amount:100});
 }
 
 // ---- x402 on-rail payments -----------------------------------------------------
@@ -1423,12 +1430,12 @@ function x402Header(payer, value, nonce, consentId){
     extra: consentId ? {consent_id: consentId} : {}};
   return btoa(JSON.stringify(p));
 }
-async function x402Fetch(path, header, expectFail){
+async function x402Fetch(path, header){
   logReq('GET', path, header ? {'X-PAYMENT':'(base64 EIP-3009 authorization)'} : null);
   try{
     const r = await fetch(path, {headers: header ? {'X-PAYMENT': header} : {}});
     const data = await r.json();
-    logRes(r.status, data, expectFail ? !r.ok : r.ok);
+    logRes(r.status, data, r.ok);
     const pr = r.headers.get('X-PAYMENT-RESPONSE');
     if (pr){
       const receipt = JSON.parse(atob(pr));
@@ -1443,7 +1450,7 @@ async function demoX402(){
   const id = uid(), payer = 'agent-'+id;
   note('── x402 · HTTP-native agent payment: 402 → sign → pay → 200 ──');
   note('1) ask without payment — the rail answers 402 with the requirements:');
-  await x402Fetch('/x402/resource/market-report', null, true);
+  await x402Fetch('/x402/resource/market-report', null);
   note('2) retry with a signed X-PAYMENT header (EIP-3009-shaped, sandbox-signed):');
   await x402Fetch('/x402/resource/market-report', x402Header(payer, 25, 'n-'+id));
   note('✓ resource delivered + on-rail receipt; settlement is IRREVOCABLE (stablecoin_x402)');
@@ -1454,26 +1461,27 @@ async function atkX402(){
   const h = x402Header(payer, 25, n);
   await x402Fetch('/x402/resource/market-report', h);
   note('replay the SAME signed payment (double-spend attempt):');
-  await x402Fetch('/x402/resource/market-report', h, true);
+  await x402Fetch('/x402/resource/market-report', h);
   note('principal capped this agent at 10 — over-budget x402 payment refused:');
   await call('POST','/consent',{consent_id:'xcap-'+id, principal:payer, budget:10});
-  await x402Fetch('/x402/resource/market-report', x402Header(payer, 25, 'n2-'+id, 'xcap-'+id), true);
+  await x402Fetch('/x402/resource/market-report', x402Header(payer, 25, 'n2-'+id, 'xcap-'+id));
 }
 
 // ---- persona + use-case demos ----------------------------------------------------
 async function demoPrincipal(){
   const id = uid();
   note('── PERSONA · the principal: refusal up front, recall after ──');
-  await call('POST','/consent',{consent_id:'c-'+id,principal:'me-'+id,budget:500});
-  note('1) the 900-credit overreach is refused up front…');
+  note('mandate: budget 500, only "shop" is allowlisted');
+  await call('POST','/consent',{consent_id:'c-'+id,principal:'me-'+id,budget:500,
+    merchant_allowlist:['shop']});
+  note('1) the 900-credit overreach is refused up front (900 > 500)…');
   await call('POST','/pay',{ref:'x-'+id,from_account:'me-'+id,to_account:'shop',
-    amount:900,region:'in_upi',consent_id:'c-'+id}, true);
-  note('2) …and a breach that slipped through is recalled:');
+    amount:900,region:'in_upi',consent_id:'c-'+id});
+  note('2) …a charge that slipped through to a non-allowlisted payee is recalled:');
   await call('POST','/pay',{ref:'y-'+id,from_account:'me-'+id,to_account:'rogue',
     amount:300,region:'in_upi'});
-  await call('POST','/recall',{ref:'y-'+id,consent_id:'c-'+id}, true); // 300<=500 → refused (no breach)
-  await call('POST','/consent',{consent_id:'tight-'+id,principal:'me-'+id,budget:100});
-  await call('POST','/recall',{ref:'y-'+id,consent_id:'tight-'+id});
+  await call('POST','/recall',{ref:'y-'+id,consent_id:'c-'+id});
+  await call('GET',`/accounts/me-${id}`);
 }
 async function demoProvider(){
   const id = uid();
@@ -1489,15 +1497,16 @@ async function demoDigiDoot(){
   const id = uid();
   note('── USE CASE · DigiDoot: citizen agent on UPI with explicit consent ──');
   await call('POST','/regions/recommend',{client_prefs:['in_upi'],agent_prefs:['in_upi']});
-  await call('POST','/consent',{consent_id:'aadhaar-'+id,principal:'citizen-'+id,budget:500});
-  note('welfare payment within consent:');
+  note('the citizen\'s mandate: budget 500, only the welfare portal is allowlisted');
+  await call('POST','/consent',{consent_id:'aadhaar-'+id,principal:'citizen-'+id,budget:500,
+    merchant_allowlist:['welfare-portal']});
+  note('welfare payment within the mandate:');
   await call('POST','/pay',{ref:'w-'+id,from_account:'citizen-'+id,to_account:'welfare-portal',
     amount:300,region:'in_upi',consent_id:'aadhaar-'+id});
-  note('rogue charge outside any consent — recalled under UPI:');
+  note('a rogue charge settles to a non-allowlisted payee — recalled under UPI:');
   await call('POST','/pay',{ref:'r-'+id,from_account:'citizen-'+id,to_account:'rogue',
     amount:400,region:'in_upi'});
-  await call('POST','/consent',{consent_id:'chk-'+id,principal:'citizen-'+id,budget:100});
-  await call('POST','/recall',{ref:'r-'+id,consent_id:'chk-'+id});
+  await call('POST','/recall',{ref:'r-'+id,consent_id:'aadhaar-'+id});
 }
 async function demoCrossBorder(){
   note('── USE CASE · cross-border: EU client × BR seller → Nash lands on Pix ──');
@@ -1507,19 +1516,20 @@ async function demoCrossBorder(){
 }
 async function demoSubscription(){
   const id = uid();
-  note('── USE CASE · subscription guardrail: renewal above budget is refused ──');
+  note('── USE CASE · subscription guardrail: renewal above the cap is refused ──');
+  note('standing mandate: every renewal is checked against a 250-per-payment cap');
   await call('POST','/consent',{consent_id:'sub-'+id,principal:'human-'+id,budget:250});
   await call('POST','/pay',{ref:'m1-'+id,from_account:'human-'+id,to_account:'saas',
     amount:200,region:'eu_sepa',consent_id:'sub-'+id});
-  note('price hike: 300 > 250 standing consent —');
+  note('price hike: the 300 renewal exceeds the 250 cap —');
   await call('POST','/pay',{ref:'m2-'+id,from_account:'human-'+id,to_account:'saas',
-    amount:300,region:'eu_sepa',consent_id:'sub-'+id}, true);
+    amount:300,region:'eu_sepa',consent_id:'sub-'+id});
 }
 
 // ---- attacks -----------------------------------------------------------------
 async function atkNoOverlap(){
   note('── ATTACK · parties with no shared jurisdiction ──');
-  await call('POST','/regions/recommend',{client_prefs:['br_pix'],agent_prefs:['us_fednow']}, true);
+  await call('POST','/regions/recommend',{client_prefs:['br_pix'],agent_prefs:['us_fednow']});
   note('agreed_region null → the deal must not proceed');
 }
 async function atkConsent(){
@@ -1527,22 +1537,24 @@ async function atkConsent(){
   note('── ATTACK · charge 900 against a 500 consent ──');
   await call('POST','/consent',{consent_id:'c-'+id,principal:'human-'+id,budget:500});
   await call('POST','/pay',{ref:'p-'+id,from_account:'human-'+id,to_account:'shop',
-    amount:900,region:'in_upi',consent_id:'c-'+id}, true);
+    amount:900,region:'in_upi',consent_id:'c-'+id});
 }
 async function atkEscrow(){
   const id = uid();
   note('── ATTACK · release escrow without delivering ──');
   await call('POST','/escrow',{escrow_id:'e-'+id,payer:'human-'+id,payee:'ghost',
     amount:200,region:'br_pix',condition_expected:'delivered'});
-  await call('POST',`/escrow/e-${id}/release`, null, true);
+  await call('POST',`/escrow/e-${id}/release`, null);
 }
 async function atkFednow(){
   const id = uid();
   note('── ATTACK · recall on FedNow (regime forbids recall) ──');
+  note('the mandate exists first — but the region has no recall procedure at all:');
+  await call('POST','/consent',{consent_id:'cb-'+id,principal:'bob-'+id,budget:100});
   await call('POST','/pay',{ref:'f-'+id,from_account:'bob-'+id,to_account:'scam',
     amount:300,region:'us_fednow'});
-  await call('POST','/consent',{consent_id:'cb-'+id,principal:'bob-'+id,budget:100});
-  await call('POST','/recall',{ref:'f-'+id,consent_id:'cb-'+id}, true);
+  await call('POST','/recall',{ref:'f-'+id,consent_id:'cb-'+id});
+  note('breach or not (300 > 100 budget), us_fednow disallows recall — refused');
 }
 async function atkClawback(){
   const id = uid();
@@ -1550,11 +1562,11 @@ async function atkClawback(){
   await call('POST','/consent',{consent_id:'ok-'+id,principal:'bob-'+id,budget:500});
   await call('POST','/pay',{ref:'u-'+id,from_account:'bob-'+id,to_account:'shop',
     amount:300,region:'in_upi',consent_id:'ok-'+id});
-  await call('POST','/recall',{ref:'u-'+id,consent_id:'ok-'+id}, true);
+  await call('POST','/recall',{ref:'u-'+id,consent_id:'ok-'+id});
 }
 async function atkReason(){
   note('── ATTACK · Pix reason code under the UPI regime ──');
-  await call('POST','/dispute',{ref:'d-'+uid(),region:'in_upi',reason_code:'pix_med_return'}, true);
+  await call('POST','/dispute',{ref:'d-'+uid(),region:'in_upi',reason_code:'pix_med_return'});
 }
 
 // ---- gate table self-verification ----------------------------------------------
