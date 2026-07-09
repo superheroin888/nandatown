@@ -11,6 +11,9 @@ cd "$SVC"
 URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$HOME/Library/Logs/tvist-tunnel.log" | tail -1)
 [ -n "$URL" ] || exit 0
 CUR=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' SKILL.md | head -1)
+# if SKILL.md no longer uses a tunnel URL, the service moved to a permanent
+# host — never swap a permanent URL back to a tunnel
+[ -n "$CUR" ] || exit 0
 [ "$URL" = "$CUR" ] && exit 0
 
 # only swap to a URL that is actually serving
