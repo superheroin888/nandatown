@@ -5,7 +5,7 @@ disputes for AI agents that send payments — one no-auth HTTP API.
 
 Base URL:
 
-https://robert-escape-que-search.trycloudflare.com
+https://tvist-api-mias-projects-667d1349.vercel.app
 
 All request and response bodies are JSON. Errors return `{"error": "<what
 failed>"}` with a 4xx status code. Sandbox: balances are notional credits
@@ -25,7 +25,7 @@ replace them with your own.
 Liveness check.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/health
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/health
 ```
 
 Example response:
@@ -39,7 +39,7 @@ Example response:
 Machine-readable index of every endpoint (browsers get an HTML page at the same URL).
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/
 ```
 
 Example response:
@@ -53,7 +53,7 @@ Example response:
 Live service counters.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/stats
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/stats
 ```
 
 Example response:
@@ -67,7 +67,7 @@ Example response:
 All 22 jurisdictions with their dispute regimes: irrevocability, recall rules, valid reason codes.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/regions
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/regions
 ```
 
 Example response:
@@ -81,7 +81,7 @@ Example response:
 Suggested starting jurisdiction from the caller's timezone and Accept-Language; the IP is echoed, not geolocated.
 
 ```bash
-curl -s 'https://robert-escape-que-search.trycloudflare.com/regions/suggest?tz=Asia/Kolkata'
+curl -s 'https://tvist-api-mias-projects-667d1349.vercel.app/regions/suggest?tz=Asia/Kolkata'
 ```
 
 Example response:
@@ -95,7 +95,7 @@ Example response:
 The Nash-optimal jurisdiction for two ranked preference lists; `agreed_region: null` means no shared region — do not transact.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/regions/recommend -H 'content-type: application/json' \
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/regions/recommend -H 'content-type: application/json' \
   -d '{"client_prefs":["eu_sepa","br_pix","in_upi"],"agent_prefs":["in_upi","br_pix","eu_sepa"]}'
 ```
 
@@ -110,7 +110,7 @@ Example response:
 The dispute taxonomy: 7 legal categories and the mapping from every reason code to its category.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/taxonomy
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/taxonomy
 ```
 
 Example response:
@@ -124,7 +124,7 @@ Example response:
 One jurisdiction's legal system, regulator, statutes and rulebooks (official-source links), and the legal basis per reason code.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/regions/in_upi/legal
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/regions/in_upi/legal
 ```
 
 Example response:
@@ -138,7 +138,7 @@ Example response:
 The four payment relationships and their checks as JSON, ASCII, and Mermaid.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/spectrum
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/spectrum
 ```
 
 Example response:
@@ -152,7 +152,7 @@ Example response:
 Store the principal's spending mandate: a budget and an optional merchant allowlist.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/consent -H 'content-type: application/json' \
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/consent -H 'content-type: application/json' \
   -d '{"consent_id":"c-ex","principal":"alice","budget":500}'
 ```
 
@@ -167,7 +167,7 @@ Example response:
 Settle a payment; if `consent_id` is given the mandate is enforced (a payment outside it returns 403 before funds move).
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/pay -H 'content-type: application/json' \
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/pay -H 'content-type: application/json' \
   -d '{"ref":"p-ex","from_account":"alice","to_account":"shop","amount":300,"region":"br_pix","consent_id":"c-ex"}'
 ```
 
@@ -182,7 +182,7 @@ Example response:
 Notional balance; accounts start at 100000 credits on first use.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/accounts/alice
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/accounts/alice
 ```
 
 Example response:
@@ -196,7 +196,7 @@ Example response:
 Open and fund an escrow: the amount leaves the payer immediately and is held.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/escrow -H 'content-type: application/json' \
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/escrow -H 'content-type: application/json' \
   -d '{"escrow_id":"e-ex","payer":"alice","payee":"airline","amount":400,"region":"br_pix","condition_expected":"ticket_issued"}'
 ```
 
@@ -211,7 +211,7 @@ Example response:
 Post the delivery proof; `delivered` is true only if the proof equals the agreed condition exactly.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/escrow/e-ex/deliver -H 'content-type: application/json' -d '{"proof":"ticket_issued"}'
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/escrow/e-ex/deliver -H 'content-type: application/json' -d '{"proof":"ticket_issued"}'
 ```
 
 Example response:
@@ -225,7 +225,7 @@ Example response:
 Pay the payee; refused with 403 unless the escrow is delivered and uncontested.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/escrow/e-ex/release
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/escrow/e-ex/release
 ```
 
 Example response:
@@ -239,7 +239,7 @@ Example response:
 Contest a funded escrow; a contested escrow cannot be released.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/escrow/e-ex2/contest
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/escrow/e-ex2/contest
 ```
 
 Example response:
@@ -253,7 +253,7 @@ Example response:
 Refund a contested escrow to the payer.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/escrow/e-ex2/refund
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/escrow/e-ex2/refund
 ```
 
 Example response:
@@ -267,7 +267,7 @@ Example response:
 Escrow status.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/escrow/e-ex
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/escrow/e-ex
 ```
 
 Example response:
@@ -281,7 +281,7 @@ Example response:
 Reverse a settled payment — only if the region allows recall, the window is open, and the payment breached the consent.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/recall -H 'content-type: application/json' \
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/recall -H 'content-type: application/json' \
   -d '{"ref":"r-ex","consent_id":"cb-ex"}'
 ```
 
@@ -296,7 +296,7 @@ Example response:
 File a dispute; accepted only if the reason code is valid in the region, and the response includes the legal citation.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/dispute -H 'content-type: application/json' \
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/dispute -H 'content-type: application/json' \
   -d '{"ref":"d-ex","region":"in_upi","reason_code":"goods_not_received"}'
 ```
 
@@ -311,7 +311,7 @@ Example response:
 Delegate part of a budget to a sub-agent; a delegation larger than its parent's budget is refused with 403.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/m2m/delegate -H 'content-type: application/json' \
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/m2m/delegate -H 'content-type: application/json' \
   -d '{"delegation_id":"d-ex","parent_consent_id":"root-ex","agent":"shopper-bot","budget":300}'
 ```
 
@@ -326,7 +326,7 @@ Example response:
 One call between two agents: agree the region (Nash), check the mandate, open and fund an escrow.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/m2m/handshake -H 'content-type: application/json' \
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/m2m/handshake -H 'content-type: application/json' \
   -d '{"pact_id":"t-ex","buyer_agent":"shopper-bot","seller_agent":"seller-agent","buyer_prefs":["eu_sepa","br_pix"],"seller_prefs":["br_pix","in_upi"],"amount":250,"delegation_id":"d-ex"}'
 ```
 
@@ -341,7 +341,7 @@ Example response:
 Pact status including its escrow.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/m2m/pact/t-ex
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/m2m/pact/t-ex
 ```
 
 Example response:
@@ -355,7 +355,7 @@ Example response:
 Delegation status and its chain to the root consent.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/m2m/delegation/d-ex
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/m2m/delegation/d-ex
 ```
 
 Example response:
@@ -369,7 +369,7 @@ Example response:
 An x402-paid resource: without an X-PAYMENT header it returns 402 with the price; with a valid header it returns the resource plus an X-PAYMENT-RESPONSE receipt.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/x402/resource/market-report
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/x402/resource/market-report
 ```
 
 Example response:
@@ -383,7 +383,7 @@ Example response:
 Facilitator check: is this X-PAYMENT header valid for the resource? Does not settle.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/x402/verify -H 'content-type: application/json' \
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/x402/verify -H 'content-type: application/json' \
   -d '{"resource":"market-report","payment_header":"<base64 X-PAYMENT>"}'
 ```
 
@@ -398,7 +398,7 @@ Example response:
 Facilitator settle: verify the X-PAYMENT header and execute it on the ledger; each nonce settles once.
 
 ```bash
-curl -s -X POST https://robert-escape-que-search.trycloudflare.com/x402/settle -H 'content-type: application/json' \
+curl -s -X POST https://tvist-api-mias-projects-667d1349.vercel.app/x402/settle -H 'content-type: application/json' \
   -d '{"resource":"market-report","payment_header":"<base64 X-PAYMENT>"}'
 ```
 
@@ -413,7 +413,7 @@ Example response:
 The not-legal-advice disclaimer.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/disclaimer
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/disclaimer
 ```
 
 Example response:
@@ -427,7 +427,7 @@ Example response:
 This file, served raw (`?download=1` to download).
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/skill.md
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/skill.md
 ```
 
 Example response:
@@ -441,7 +441,7 @@ Example response:
 OpenAPI 3.1 spec for every endpoint.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/openapi.json
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/openapi.json
 ```
 
 Example response:
@@ -455,7 +455,7 @@ Example response:
 Interactive Swagger UI for the API (HTML).
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/docs
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/docs
 ```
 
 Example response:
@@ -469,7 +469,7 @@ Example response:
 Deployment guide, raw markdown (`?download=1` to download).
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/readme.md
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/readme.md
 ```
 
 Example response:
@@ -483,7 +483,7 @@ Example response:
 `skill` or `readme`, rendered as an HTML page for humans.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/view/skill
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/view/skill
 ```
 
 Example response:
@@ -497,7 +497,7 @@ Example response:
 Lists the downloadable pitch-kit documents and their URLs.
 
 ```bash
-curl -s https://robert-escape-que-search.trycloudflare.com/downloads
+curl -s https://tvist-api-mias-projects-667d1349.vercel.app/downloads
 ```
 
 Example response:
@@ -511,7 +511,7 @@ Example response:
 One pitch-kit file: `brief-pdf`, `summary-pdf`, `summary-docx`, or `deck-pptx`.
 
 ```bash
-curl -s -o tvist-brief.pdf https://robert-escape-que-search.trycloudflare.com/download/brief-pdf
+curl -s -o tvist-brief.pdf https://tvist-api-mias-projects-667d1349.vercel.app/download/brief-pdf
 ```
 
 Example response:

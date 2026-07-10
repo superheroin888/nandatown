@@ -1,7 +1,9 @@
-# Tvist.ai — Executive Summary
+# Tvist.api — Executive Summary
 
 *The settlement-trust layer for agentic commerce: jurisdiction, consent, escrow,
 and recall for AI agents that move money.*
+
+**Live:** https://tvist-api-mias-projects-667d1349.vercel.app · agent contract: `/skill.md` on the same URL · source: github.com/superheroin888/tvist-api
 
 ---
 
@@ -45,7 +47,7 @@ Seven agent-payment protocols, four card networks, ~$50B of manual escrow —
 each with its own (or zero) dispute taxonomy. **Everyone built rails and intent
 standards. Nobody built the dispute + escrow layer across them.**
 
-## The Tvist.ai solution
+## The Tvist.api solution
 
 A thin **orchestration layer** (not a bank — regulated custody partners hold
 funds) with four primitives that fire in order, before and after every agent

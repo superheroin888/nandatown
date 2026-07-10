@@ -52,26 +52,26 @@ https://github.com/superheroin888/tvist-api
 
 (Alternatives: "Hosted link" -> the permanent raw file
 `https://raw.githubusercontent.com/superheroin888/tvist-api/main/SKILL.md`,
-or the live sandbox `https://robert-escape-que-search.trycloudflare.com/skill.md`;
+or the live sandbox `https://tvist-api-mias-projects-667d1349.vercel.app/skill.md`;
 or "Paste directly" -> paste the contents of `SKILL.md`.)
 
 **Live endpoint URLs (one per line)**
 
 ```
-https://robert-escape-que-search.trycloudflare.com/health
-https://robert-escape-que-search.trycloudflare.com/
-https://robert-escape-que-search.trycloudflare.com/skill.md
-https://robert-escape-que-search.trycloudflare.com/regions
-https://robert-escape-que-search.trycloudflare.com/regions/suggest
-https://robert-escape-que-search.trycloudflare.com/regions/recommend
-https://robert-escape-que-search.trycloudflare.com/consent
-https://robert-escape-que-search.trycloudflare.com/pay
-https://robert-escape-que-search.trycloudflare.com/escrow
-https://robert-escape-que-search.trycloudflare.com/recall
-https://robert-escape-que-search.trycloudflare.com/dispute
-https://robert-escape-que-search.trycloudflare.com/taxonomy
-https://robert-escape-que-search.trycloudflare.com/x402/resource/market-report
-https://robert-escape-que-search.trycloudflare.com/openapi.json
+https://tvist-api-mias-projects-667d1349.vercel.app/health
+https://tvist-api-mias-projects-667d1349.vercel.app/
+https://tvist-api-mias-projects-667d1349.vercel.app/skill.md
+https://tvist-api-mias-projects-667d1349.vercel.app/regions
+https://tvist-api-mias-projects-667d1349.vercel.app/regions/suggest
+https://tvist-api-mias-projects-667d1349.vercel.app/regions/recommend
+https://tvist-api-mias-projects-667d1349.vercel.app/consent
+https://tvist-api-mias-projects-667d1349.vercel.app/pay
+https://tvist-api-mias-projects-667d1349.vercel.app/escrow
+https://tvist-api-mias-projects-667d1349.vercel.app/recall
+https://tvist-api-mias-projects-667d1349.vercel.app/dispute
+https://tvist-api-mias-projects-667d1349.vercel.app/taxonomy
+https://tvist-api-mias-projects-667d1349.vercel.app/x402/resource/market-report
+https://tvist-api-mias-projects-667d1349.vercel.app/openapi.json
 ```
 
 **Tags (optional)**
@@ -83,7 +83,7 @@ escrow, payments, disputes, consent, jurisdiction, x402, m2m
 ### A-alt. Register without the form (their documented API)
 
 ```bash
-BASE=https://robert-escape-que-search.trycloudflare.com
+BASE=https://tvist-api-mias-projects-667d1349.vercel.app
 curl -X POST https://nandatown.projectnanda.org/api/skills \
   -H 'content-type: application/json' \
   -d "{
@@ -140,7 +140,7 @@ https://github.com/superheroin888/nandatown/pull/1.)
 **Live demo URL** ("Must be reachable right now")
 
 ```
-https://robert-escape-que-search.trycloudflare.com
+https://tvist-api-mias-projects-667d1349.vercel.app
 ```
 
 **Live endpoints agents can call (one per line)** — same list as section A.
@@ -152,7 +152,7 @@ https://robert-escape-que-search.trycloudflare.com
 ## 30-second proof for judges (copy-paste)
 
 ```bash
-BASE=https://robert-escape-que-search.trycloudflare.com
+BASE=https://tvist-api-mias-projects-667d1349.vercel.app
 # Nash-optimal jurisdiction for two parties who want different things
 curl -s -X POST $BASE/regions/recommend -H 'content-type: application/json' \
   -d '{"client_prefs":["eu_sepa","br_pix","in_upi"],"agent_prefs":["in_upi","br_pix","eu_sepa"]}'

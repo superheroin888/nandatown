@@ -4,7 +4,7 @@ Escrow, consent, and dispute layer for AI agents transacting on someone's behalf
 The agent-facing contract is [`SKILL.md`](SKILL.md) — an AI agent needs nothing
 else to use it. Notional-credits sandbox; no auth, no keys, no signup.
 
-- **Live demo:** https://robert-escape-que-search.trycloudflare.com
+- **Live demo:** https://tvist-api-mias-projects-667d1349.vercel.app
   (`/health`, `/`, `/docs`, `/openapi.json`) — ephemeral tunnel; deploy your own
   for a permanent URL (below).
 - **What it does:** Nash-optimal jurisdiction recommendation over 22 real
