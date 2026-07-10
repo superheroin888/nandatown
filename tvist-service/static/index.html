@@ -1222,21 +1222,27 @@ function escSet(msg, ok){
   const out = document.getElementById('esout');
   out.className = 'result ' + (ok ? 'ok' : 'bad'); out.innerHTML = msg;
 }
+function escErr(r, fallback){   // surface the API's own reason in the status line
+  return (r.data && r.data.error) ? esc(r.data.error) : fallback;
+}
 async function escOpen(){
   const region = document.getElementById('esregion').value;
+  const amount = Number(document.getElementById('esamount').value);
+  if (!Number.isInteger(amount) || amount <= 0)
+    return escSet('amount must be a positive whole number of credits', false);
   const id = 'ui-' + uid();
   note(`── ESCROW BUILDER · open under ${region} ──`);
   const r = await call('POST', '/escrow', {
     escrow_id: id,
     payer: document.getElementById('espayer').value.trim(),
     payee: document.getElementById('espayee').value.trim(),
-    amount: Number(document.getElementById('esamount').value),
+    amount,
     region,
     condition_expected: document.getElementById('escond').value.trim(),
   });
   if (r.status === 200){ _escrow = {id, region};
     escSet(`escrow <b>${id}</b> FUNDED under ${region} — funds held. Next: deliver the proof.`, true);
-  } else escSet(`open failed (${r.status}) — see console`, false);
+  } else escSet('open refused: ' + escErr(r, 'status ' + r.status), false);
 }
 async function escDeliver(){
   if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
@@ -1251,19 +1257,19 @@ async function escRelease(){
   if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
   const r = await call('POST', `/escrow/${_escrow.id}/release`, null);
   if (r.status === 200) escSet(`RELEASED — payee paid under ${_escrow.region}. Open another to repeat.`, true);
-  else escSet(`release refused (${r.status}) — not delivered (or contested)`, false);
+  else escSet('release refused: ' + escErr(r, 'status ' + r.status), false);
 }
 async function escContest(){
   if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
   const r = await call('POST', `/escrow/${_escrow.id}/contest`);
   if (r.status === 200) escSet('CONTESTED — release is blocked; refund returns the funds to the payer', true);
-  else escSet(`contest refused (${r.status}) — see console`, false);
+  else escSet('contest refused: ' + escErr(r, 'status ' + r.status), false);
 }
 async function escRefund(){
   if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
   const r = await call('POST', `/escrow/${_escrow.id}/refund`);
   if (r.status === 200) escSet('REFUNDED — payer made whole. Open another to repeat.', true);
-  else escSet(`refund refused (${r.status}) — only a contested escrow can be refunded`, false);
+  else escSet('refund refused: ' + escErr(r, 'status ' + r.status), false);
 }
 async function escStatus(){
   if (!_escrow) return escSet('no escrow open — click "1 · Open + fund" first', false);
